@@ -237,16 +237,23 @@ function oOp(id,val='',onlyNew=false){const el=$(id);if(!el)return;let ops=D.ope
 function oTG(id,val=''){const el=$(id);if(!el)return;el.innerHTML='<option value="">-- Seleccionar --</option>'+D.tipos_gasto.map(t=>`<option value="${t.id}" ${t.id==val?'selected':''}>${t.nom} (${t.cat})</option>`).join('');}
 function oFP(id,val='',onlyPend=true){const el=$(id);if(!el)return;let fps=onlyPend?D.facturas_prov.filter(f=>f.ep==='PENDIENTE'):D.facturas_prov;el.innerHTML='<option value="">-- Seleccionar --</option>'+fps.map(f=>`<option value="${f.id}" ${f.id==val?'selected':''}>${f.nro} — ${f.prov} — $ ${fN(f.tars)}</option>`).join('');}
 function oFE(id,val='',onlyPend=true){const el=$(id);if(!el)return;let fes=onlyPend?D.facturas_emit.filter(f=>f.ec==='PENDIENTE'):D.facturas_emit;el.innerHTML='<option value="">-- Seleccionar --</option>'+fes.map(f=>`<option value="${f.id}" ${f.id==val?'selected':''}>${f.nro} — ${f.cliente} — $ ${fN(f.tars)}</option>`).join('');}
-function afPvTG(pvId,tgId){const pv=D.proveedores.find(p=>p.id==pvId);if(pv&&pv.tg_id&&$(tgId))$(tgId).value=pv.tg_id;}
+function afPvTG(pvSelId,tgSelId){const pvId=parseInt($(pvSelId)?.value)||0;const pv=D.proveedores.find(p=>p.id===pvId);if(pv&&pv.tg_id&&$(tgSelId))$(tgSelId).value=pv.tg_id;}
 function afFacPg(facId){const f=D.facturas_prov.find(x=>x.id==facId);if(!f)return;if($('pg-pv'))$('pg-pv').value=f.pv_id||'';if($('pg-mars'))$('pg-mars').value=f.tars||0;if($('pg-musd'))$('pg-musd').value=f.tusd||0;if($('pg-mon'))$('pg-mon').value=f.mon||'ARS';}
 function afFacCb(facId){const f=D.facturas_emit.find(x=>x.id==facId);if(!f)return;if($('cb-cl'))$('cb-cl').value=f.cl_id||'';if($('cb-mars'))$('cb-mars').value=f.tars||0;if($('cb-musd'))$('cb-musd').value=f.tusd||0;if($('cb-mon'))$('cb-mon').value=f.mon||'ARS';}
 
 // ═══ IVA CALCULATOR ═══════════════════════════
 function cIVA(p){
-  const n21=parseFloat($(p+'-n21').value)||0,n105=parseFloat($(p+'-n105').value)||0,n0=parseFloat($(p+'-n0').value)||0;
-  const i21=n21*.21,i105=n105*.105,tiva=i21+i105,neto=n21+n105+n0,total=neto+tiva;
+  const n21=parseFloat($(p+'-n21')?.value)||0;
+  const n105=parseFloat($(p+'-n105')?.value)||0;
+  const n27=parseFloat($(p+'-n27')?.value)||0;
+  const n5=parseFloat($(p+'-n5')?.value)||0;
+  const n0=parseFloat($(p+'-n0')?.value)||0;
+  const i21=n21*.21,i105=n105*.105,i27=n27*.27,i5=n5*.05;
+  const tiva=i21+i105+i27+i5,neto=n21+n105+n27+n5+n0,total=neto+tiva;
   if($(p+'-i21'))$(p+'-i21').value=i21.toFixed(2);
   if($(p+'-i105'))$(p+'-i105').value=i105.toFixed(2);
+  if($(p+'-i27'))$(p+'-i27').value=i27.toFixed(2);
+  if($(p+'-i5'))$(p+'-i5').value=i5.toFixed(2);
   if($(p+'-tiva'))$(p+'-tiva').value=tiva.toFixed(2);
   if($(p+'-total'))$(p+'-total').value=total.toFixed(2);
   const mon=$(p+'-mon')?.value,tc=parseFloat($(p+'-tc')?.value)||lTC();
@@ -657,11 +664,11 @@ function gFP(){
   const tgId=parseInt(v('fp-tg'))||0;const tg=D.tipos_gasto.find(t=>t.id===tgId)||{};
   const opId=parseInt(v('fp-op'))||0;const op=D.operaciones.find(o=>o.id===opId)||{};
   const mon=v('fp-mon')||'ARS',tc=parseFloat(v('fp-tc'))||lTC();
-  const n21=parseFloat(v('fp-n21'))||0,n105=parseFloat(v('fp-n105'))||0,n0=parseFloat(v('fp-n0'))||0;
-  const i21=n21*.21,i105=n105*.105,tiva=i21+i105,neto=n21+n105+n0,total=neto+tiva;
+  const n21=parseFloat(v('fp-n21'))||0,n105=parseFloat(v('fp-n105'))||0,n27=parseFloat(v('fp-n27'))||0,n5=parseFloat(v('fp-n5'))||0,n0=parseFloat(v('fp-n0'))||0;
+  const i21=n21*.21,i105=n105*.105,i27=n27*.27,i5=n5*.05,tiva=i21+i105+i27+i5,neto=n21+n105+n27+n5+n0,total=neto+tiva;
   const tars=mon==='USD'?total*tc:total,tusd=mon==='USD'?total:(tc>1?total/tc:0);
   const ep=v('fp-ep')||'PENDIENTE';
-  const rec={id:editIdx>=0?D.facturas_prov[editIdx].id:nid(D.facturas_prov),fe:v('fp-fe'),fv:v('fp-fv'),pv_id:pvId,prov:pv.razon||'',nro:v('fp-nro'),tc:v('fp-tc2')||'Factura A',tg_id:tgId,tg:tg.nom||'',n21,i21,n105,i105,n0,tiva,neto,total,mon,tars,tusd,tc_v:tc,asig:v('fp-asig')||'ESTRUCTURA',op_id:opId,op:op.exp||'',rec:v('fp-rec')||'NO',ep,notas:v('fp-notas')||''};
+  const rec={id:editIdx>=0?D.facturas_prov[editIdx].id:nid(D.facturas_prov),fe:v('fp-fe'),fv:v('fp-fv'),pv_id:pvId,prov:pv.razon||'',nro:v('fp-nro'),tc:v('fp-tc2')||'Factura A',tg_id:tgId,tg:tg.nom||'',n21,i21,n27,i27,n105,i105,n5,i5,n0,tiva,neto,total,mon,tars,tusd,tc_v:tc,asig:v('fp-asig')||'ESTRUCTURA',op_id:opId,op:op.exp||'',rec:v('fp-rec')||'NO',ep,notas:v('fp-notas')||''};
   if(editIdx>=0)D.facturas_prov[editIdx]=rec;else D.facturas_prov.push(rec);
   save('facturas_prov');editIdx=-1;cM('m-fp');
   if(ep==='PAGADA'&&confirm('Factura guardada como PAGADA.\n\n¿Registrás el pago ahora?')){
@@ -674,11 +681,11 @@ function gFE(){
   const cli=D.clientes.find(c=>c.id===cliId)||{};
   const opId=parseInt(v('fe-op'))||0;const op=D.operaciones.find(o=>o.id===opId)||{};
   const mon=v('fe-mon')||'USD',tc=parseFloat(v('fe-tc'))||lTC();
-  const n21=parseFloat(v('fe-n21'))||0,n105=parseFloat(v('fe-n105'))||0,n0=parseFloat(v('fe-n0'))||0;
-  const i21=n21*.21,i105=n105*.105,tiva=i21+i105,neto=n21+n105+n0,total=neto+tiva;
+  const n21=parseFloat(v('fe-n21'))||0,n105=parseFloat(v('fe-n105'))||0,n27=parseFloat(v('fe-n27'))||0,n5=parseFloat(v('fe-n5'))||0,n0=parseFloat(v('fe-n0'))||0;
+  const i21=n21*.21,i105=n105*.105,i27=n27*.27,i5=n5*.05,tiva=i21+i105+i27+i5,neto=n21+n105+n27+n5+n0,total=neto+tiva;
   const tars=mon==='USD'?total*tc:total,tusd=mon==='USD'?total:(tc>1?total/tc:0);
   const ec=v('fe-ec')||'PENDIENTE';
-  const rec={id:editIdx>=0?D.facturas_emit[editIdx].id:nid(D.facturas_emit),fe:v('fe-fe'),fv:v('fe-fv'),cl_id:cliId,cliente:cli.razon||'',nro:v('fe-nro'),tc:v('fe-tc2')||'Factura A',op_id:opId,op:op.exp||'',concepto:v('fe-concepto')||'',n21,i21,n105,i105,n0,tiva,neto,tars,mon,tusd,tc_v:tc,ec,notas:v('fe-notas')||''};
+  const rec={id:editIdx>=0?D.facturas_emit[editIdx].id:nid(D.facturas_emit),fe:v('fe-fe'),fv:v('fe-fv'),cl_id:cliId,cliente:cli.razon||'',nro:v('fe-nro'),tc:v('fe-tc2')||'Factura A',op_id:opId,op:op.exp||'',concepto:v('fe-concepto')||'',n21,i21,n27,i27,n105,i105,n5,i5,n0,tiva,neto,tars,mon,tusd,tc_v:tc,ec,notas:v('fe-notas')||''};
   if(editIdx>=0)D.facturas_emit[editIdx]=rec;else D.facturas_emit.push(rec);
   save('facturas_emit');editIdx=-1;cM('m-fe');
   if(ec==='COBRADA'&&confirm('Factura registrada como COBRADA.\n\n¿Registrás la cobranza ahora?')){
@@ -803,10 +810,14 @@ render('dash');
       <div class="iboxt">Detalle de IVA</div>
       <div class="fg">
         <div class="fgrp"><label class="flbl">Neto gravado 21%</label><input type="number" class="fc" id="fp-n21" placeholder="0" oninput="cIVA('fp')"></div>
+        <div class="fgrp"><label class="flbl">Neto gravado 27%</label><input type="number" class="fc" id="fp-n27" placeholder="0" oninput="cIVA('fp')"></div>
         <div class="fgrp"><label class="flbl">Neto gravado 10.5%</label><input type="number" class="fc" id="fp-n105" placeholder="0" oninput="cIVA('fp')"></div>
+        <div class="fgrp"><label class="flbl">Neto gravado 5%</label><input type="number" class="fc" id="fp-n5" placeholder="0" oninput="cIVA('fp')"></div>
         <div class="fgrp"><label class="flbl">Neto exento</label><input type="number" class="fc" id="fp-n0" placeholder="0" oninput="cIVA('fp')"></div>
         <div class="fgrp"><label class="flbl">IVA 21%</label><input type="number" class="fc" id="fp-i21" readonly></div>
+        <div class="fgrp"><label class="flbl">IVA 27%</label><input type="number" class="fc" id="fp-i27" readonly></div>
         <div class="fgrp"><label class="flbl">IVA 10.5%</label><input type="number" class="fc" id="fp-i105" readonly></div>
+        <div class="fgrp"><label class="flbl">IVA 5%</label><input type="number" class="fc" id="fp-i5" readonly></div>
         <div class="fgrp"><label class="flbl">Total IVA</label><input type="number" class="fc" id="fp-tiva" readonly></div>
         <div class="fgrp"><label class="flbl" style="color:var(--acc);font-weight:600">TOTAL</label><input type="number" class="fc" id="fp-total" readonly style="color:var(--acc);font-weight:600"></div>
         <div class="fgrp"><label class="flbl">Moneda</label><select class="fc" id="fp-mon" onchange="cIVA('fp')"><option>ARS</option><option>USD</option></select></div>
@@ -841,10 +852,14 @@ render('dash');
         <div class="iboxt">Detalle de IVA</div>
         <div class="fg">
           <div class="fgrp"><label class="flbl">Neto gravado 21%</label><input type="number" class="fc" id="fe-n21" placeholder="0" oninput="cIVA('fe')"></div>
+          <div class="fgrp"><label class="flbl">Neto gravado 27%</label><input type="number" class="fc" id="fe-n27" placeholder="0" oninput="cIVA('fe')"></div>
           <div class="fgrp"><label class="flbl">Neto gravado 10.5%</label><input type="number" class="fc" id="fe-n105" placeholder="0" oninput="cIVA('fe')"></div>
+          <div class="fgrp"><label class="flbl">Neto gravado 5%</label><input type="number" class="fc" id="fe-n5" placeholder="0" oninput="cIVA('fe')"></div>
           <div class="fgrp"><label class="flbl">Neto exento</label><input type="number" class="fc" id="fe-n0" placeholder="0" oninput="cIVA('fe')"></div>
           <div class="fgrp"><label class="flbl">IVA 21%</label><input type="number" class="fc" id="fe-i21" readonly></div>
+          <div class="fgrp"><label class="flbl">IVA 27%</label><input type="number" class="fc" id="fe-i27" readonly></div>
           <div class="fgrp"><label class="flbl">IVA 10.5%</label><input type="number" class="fc" id="fe-i105" readonly></div>
+          <div class="fgrp"><label class="flbl">IVA 5%</label><input type="number" class="fc" id="fe-i5" readonly></div>
           <div class="fgrp"><label class="flbl">Total IVA</label><input type="number" class="fc" id="fe-tiva" readonly></div>
           <div class="fgrp"><label class="flbl" style="color:var(--acc);font-weight:600">TOTAL</label><input type="number" class="fc" id="fe-total" readonly style="color:var(--acc);font-weight:600"></div>
           <div class="fgrp"><label class="flbl">Moneda</label><select class="fc" id="fe-mon" onchange="cIVA('fe')"><option>ARS</option><option>USD</option></select></div>
