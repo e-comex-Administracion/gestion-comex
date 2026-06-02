@@ -339,11 +339,11 @@ function vExp(idx){
 function rFProv(pg,ac){
   ac.innerHTML=`<button class="btn bp bs" onclick="oM('m-fp')">＋ Nueva Factura</button>`;
   pg.innerHTML=`<div class="card"><div class="ch"><span class="cn">Facturas de Proveedores</span></div><div class="cb">
-    ${tbl(['Fecha','Vence','Proveedor','Nro. Factura','Tipo Gasto','Total ARS','Moneda','Asignación','Operación','Recuperable','Estado','Acciones'],
+    ${tbl(['Fecha','Vence','Proveedor','Nro. Factura','Tipo Gasto','Total ARS','Moneda','Asignación','Operación','Estado','Acciones'],
       D.facturas_prov.map((f,i)=>[
         `<span class="tdc">${f.fe}</span>`,`<span class="tdc">${f.fv}</span>`,`<span class="tdm">${f.prov}</span>`,
         `<span class="tdc" style="font-size:10px">${f.nro}</span>`,f.tg,`<span class="tdc">$ ${fN(f.tars)}</span>`,f.mon,
-        `<span class="bg ${f.asig==='OPERACION'?'bgb':'bgp'}">${f.asig}</span>`,f.op||'-',eB(f.rec),eB(f.ep),ac2('facturas_prov',i)
+        `<span class="bg ${f.asig==='OPERACION'?'bgb':'bgp'}">${f.asig}</span>`,f.op||'-',eB(f.ep),ac2('facturas_prov',i)
       ]))}</div></div>`;
 }
 
@@ -553,7 +553,7 @@ function mkWS(wb,nom,headers,rows){
 }
 
 function _xOps(wb){mkWS(wb,'Expedientes',['Expediente','Cliente','País','Tipo Importación','Fecha Apertura','Fecha Cierre','Estado','TC','Hon. USD','Hon. ARS','Notas'],D.operaciones.map(o=>[o.exp,o.cliente,o.pais,o.tipo,o.f_ap,o.f_cl||'',o.estado,o.tc||0,o.hon_usd||0,o.hon_ars||0,o.notas||'']));}
-function _xFP(wb){mkWS(wb,'Facturas Proveedores',['Fecha Emisión','Fecha Vencimiento','Proveedor','Nro. Factura','Tipo Comp.','Tipo de Gasto','Neto 21%','IVA 21%','Neto 10.5%','IVA 10.5%','Neto Exento','Total IVA','Neto Total','Total','Moneda','Total ARS','Total USD','TC Usado','Asignación','Operación','Recuperable','Estado Pago','Notas'],D.facturas_prov.map(f=>[f.fe,f.fv,f.prov,f.nro,f.tc,f.tg,f.n21||0,f.i21||0,f.n105||0,f.i105||0,f.n0||0,f.tiva||0,f.neto||0,f.total||0,f.mon,f.tars||0,f.tusd||0,f.tc_v||0,f.asig,f.op||'',f.rec,f.ep,f.notas||'']));}
+function _xFP(wb){mkWS(wb,'Facturas Proveedores',['Fecha Emisión','Fecha Vencimiento','Proveedor','Nro. Factura','Tipo Comp.','Tipo de Gasto','Neto 21%','IVA 21%','Neto 27%','IVA 27%','Neto 10.5%','IVA 10.5%','Neto 5%','IVA 5%','Neto Exento','Total IVA','Neto Total','Total','Moneda','Total ARS','Total USD','TC Usado','Asignación','Operación','Estado Pago','Notas'],D.facturas_prov.map(f=>[f.fe,f.fv,f.prov,f.nro,f.tipo_comp||f.tc,f.tg,f.n21||0,f.i21||0,f.n27||0,f.i27||0,f.n105||0,f.i105||0,f.n5||0,f.i5||0,f.n0||0,f.tiva||0,f.neto||0,f.total||0,f.mon,f.tars||0,f.tusd||0,f.tc_v||0,f.asig,f.op||'',f.ep,f.notas||'']));}
 function _xFE(wb){mkWS(wb,'Facturas Emitidas',['Fecha Emisión','Fecha Vencimiento','Cliente','Nro. ARCA','Tipo Comp.','Operación','Concepto','Neto 21%','IVA 21%','Neto 10.5%','IVA 10.5%','Neto Exento','Total IVA','Neto Total','Total ARS','Moneda','Total USD','TC','Estado Cobro','Notas'],D.facturas_emit.map(f=>[f.fe,f.fv,f.cliente,f.nro,f.tc,f.op||'',f.concepto,f.n21||0,f.i21||0,f.n105||0,f.i105||0,f.n0||0,f.tiva||0,f.neto||0,f.tars||0,f.mon,f.tusd||0,f.tc_v||0,f.ec,f.notas||'']));}
 function _xPg(wb){mkWS(wb,'Pagos',['Fecha Pago','Proveedor','Nro. Factura','Forma de Pago','Banco','Referencia','Fecha Acreditación','Monto ARS','Monto USD','Moneda','Cheque Banco','Cheque Nro.','Cheque Fecha','Observaciones'],D.pagos.map(p=>[p.fp,p.prov,p.nro_f||'',p.forma,p.banco||'',p.ref||'',p.f_ac||'',p.mars||0,p.musd||0,p.mon,p.chqb||'',p.chqn||'',p.chqf||'',p.obs||'']));}
 function _xCb(wb){mkWS(wb,'Cobranzas',['Fecha Cobro','Cliente','Nro. ARCA','Forma de Cobro','Banco','Referencia','Fecha Acreditación','Monto ARS','Monto USD','Moneda','Cheque Banco','Cheque Nro.','Cheque Fecha','Observaciones'],D.cobranzas.map(c=>[c.fc,c.cliente,c.nro_a||'',c.forma,c.banco||'',c.ref||'',c.f_ac||'',c.mars||0,c.musd||0,c.mon,c.chqb||'',c.chqn||'',c.chqf||'',c.obs||'']));}
@@ -599,7 +599,7 @@ function impXlsx(inp){
 function mapImp(k,r,i){
   const m={
     operaciones:r=>({id:i,exp:r['Expediente']||'',cliente:r['Cliente']||'',merc:r['Mercadería']||'',pais:r['País']||'',tipo:r['Tipo Importación']||'',f_ap:r['Fecha Apertura']||'',f_cl:r['Fecha Cierre']||'',estado:r['Estado']||'',tc:parseFloat(r['TC'])||0,hon_usd:parseFloat(r['Hon. USD'])||0,hon_ars:parseFloat(r['Hon. ARS'])||0,notas:r['Notas']||''}),
-    facturas_prov:r=>({id:i,fe:r['Fecha Emisión']||'',fv:r['Fecha Vencimiento']||'',prov:r['Proveedor']||'',nro:r['Nro. Factura']||'',tc:r['Tipo Comp.']||'',tg:r['Tipo de Gasto']||'',n21:parseFloat(r['Neto 21%'])||0,i21:parseFloat(r['IVA 21%'])||0,n105:parseFloat(r['Neto 10.5%'])||0,i105:parseFloat(r['IVA 10.5%'])||0,n0:parseFloat(r['Neto Exento'])||0,tiva:parseFloat(r['Total IVA'])||0,neto:parseFloat(r['Neto Total'])||0,total:parseFloat(r['Total'])||0,mon:r['Moneda']||'ARS',tars:parseFloat(r['Total ARS'])||0,tusd:parseFloat(r['Total USD'])||0,tc_v:parseFloat(r['TC Usado'])||0,asig:r['Asignación']||'ESTRUCTURA',op:r['Operación']||'',rec:r['Recuperable']||'NO',ep:r['Estado Pago']||'PENDIENTE',notas:r['Notas']||''}),
+    facturas_prov:r=>({id:i,fe:r['Fecha Emisión']||'',fv:r['Fecha Vencimiento']||'',prov:r['Proveedor']||'',nro:r['Nro. Factura']||'',tc:r['Tipo Comp.']||'',tg:r['Tipo de Gasto']||'',n21:parseFloat(r['Neto 21%'])||0,i21:parseFloat(r['IVA 21%'])||0,n105:parseFloat(r['Neto 10.5%'])||0,i105:parseFloat(r['IVA 10.5%'])||0,n0:parseFloat(r['Neto Exento'])||0,tiva:parseFloat(r['Total IVA'])||0,neto:parseFloat(r['Neto Total'])||0,total:parseFloat(r['Total'])||0,mon:r['Moneda']||'ARS',tars:parseFloat(r['Total ARS'])||0,tusd:parseFloat(r['Total USD'])||0,tc_v:parseFloat(r['TC Usado'])||0,asig:r['Asignación']||'ESTRUCTURA',op:r['Operación']||'',ep:r['Estado Pago']||'PENDIENTE',notas:r['Notas']||''}),
     facturas_emit:r=>({id:i,fe:r['Fecha Emisión']||'',fv:r['Fecha Vencimiento']||'',cliente:r['Cliente']||'',nro:r['Nro. ARCA']||'',tc:r['Tipo Comp.']||'',op:r['Operación']||'',concepto:r['Concepto']||'',n21:parseFloat(r['Neto 21%'])||0,i21:parseFloat(r['IVA 21%'])||0,n105:parseFloat(r['Neto 10.5%'])||0,i105:parseFloat(r['IVA 10.5%'])||0,n0:parseFloat(r['Neto Exento'])||0,tiva:parseFloat(r['Total IVA'])||0,neto:parseFloat(r['Neto Total'])||0,tars:parseFloat(r['Total ARS'])||0,mon:r['Moneda']||'USD',tusd:parseFloat(r['Total USD'])||0,tc_v:parseFloat(r['TC'])||0,ec:r['Estado Cobro']||'PENDIENTE',notas:r['Notas']||''}),
     pagos:r=>({id:i,fp:r['Fecha Pago']||'',prov:r['Proveedor']||'',nro_f:r['Nro. Factura']||'',forma:r['Forma de Pago']||'',banco:r['Banco']||'',ref:r['Referencia']||'',f_ac:r['Fecha Acreditación']||'',mars:parseFloat(r['Monto ARS'])||0,musd:parseFloat(r['Monto USD'])||0,mon:r['Moneda']||'ARS',chqb:r['Cheque Banco']||'',chqn:r['Cheque Nro.']||'',chqf:r['Cheque Fecha']||'',obs:r['Observaciones']||''}),
     cobranzas:r=>({id:i,fc:r['Fecha Cobro']||'',cliente:r['Cliente']||'',nro_a:r['Nro. ARCA']||'',forma:r['Forma de Cobro']||'',banco:r['Banco']||'',ref:r['Referencia']||'',f_ac:r['Fecha Acreditación']||'',mars:parseFloat(r['Monto ARS'])||0,musd:parseFloat(r['Monto USD'])||0,mon:r['Moneda']||'ARS',chqb:r['Cheque Banco']||'',chqn:r['Cheque Nro.']||'',chqf:r['Cheque Fecha']||'',obs:r['Observaciones']||''}),
@@ -632,7 +632,7 @@ function edit(tabla,idx){
 function rstPv(r={}){editIdx=r.id?D.proveedores.findIndex(x=>x.id===r.id):-1;['razon','cuit','iva','tel','email','cpago','moneda','activo','notas'].forEach(f=>{const el=$('pv-'+f);if(el)el.value=r[f]||'';});oTG('pv-tg',r.tg_id||'');}
 function rstCl(r={}){editIdx=r.id?D.clientes.findIndex(x=>x.id===r.id):-1;['razon','cuit','iva','contacto','tel','email','rubro','cpago','moneda','activo','notas'].forEach(f=>{const el=$('cl-'+f);if(el)el.value=r[f]||'';});}
 function rstEx(r={}){['exp','pais','tipo','f_ap','f_cl','estado','tc','hon_usd','hon_ars','notas'].forEach(f=>{const el=$('ex-'+f);if(el)el.value=r[f]||'';});oCl('ex-cl',r.cli_id||'');}
-function rstFP(r={}){oPv('fp-pv',r.pv_id||'');oTG('fp-tg',r.tg_id||'');oOp('fp-op',r.op_id||'');['fe','fv','nro','asig','rec','ep','notas'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||'';});if($('fp-tc2'))$('fp-tc2').value=r.tc||'Factura A';['n21','n105','n0'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||0;});if($('fp-mon'))$('fp-mon').value=r.mon||'ARS';if($('fp-tc'))$('fp-tc').value=r.tc_v||lTC();cIVA('fp');}
+function rstFP(r={}){oPv('fp-pv',r.pv_id||'');oTG('fp-tg',r.tg_id||'');oOp('fp-op',r.op_id||'');['fe','fv','nro','asig','ep','notas'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||'';});if($('fp-tc2'))$('fp-tc2').value=r.tc||'Factura A';['n21','n105','n0'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||0;});if($('fp-mon'))$('fp-mon').value=r.mon||'ARS';if($('fp-tc'))$('fp-tc').value=r.tc_v||lTC();cIVA('fp');}
 function rstFE(r={}){oCl('fe-cl',r.cl_id||'');oOp('fe-op',r.op_id||'',editIdx<0);['fe','fv','nro','concepto','ec','notas'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||'';});if($('fe-tc2'))$('fe-tc2').value=r.tc||'Factura A';['n21','n105','n0'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||0;});if($('fe-mon'))$('fe-mon').value=r.mon||'USD';if($('fe-tc'))$('fe-tc').value=r.tc_v||lTC();cIVA('fe');}
 function rstPg(r={}){oFP('pg-fac',r.fac_id||'',!r.id);oPv('pg-pv',r.pv_id||'');if($('pg-fp'))$('pg-fp').value=r.fp||'';if($('pg-forma')){$('pg-forma').value=r.forma||'';tgChq('pg');}['banco','ref','f_ac','mars','musd','mon','chqb','chqn','chqf','obs'].forEach(f=>{const el=$('pg-'+f);if(el)el.value=r[f]||'';});}
 function rstCb(r={}){oFE('cb-fac',r.fac_id||'',!r.id);oCl('cb-cl',r.cl_id||'');if($('cb-fc'))$('cb-fc').value=r.fc||'';if($('cb-forma')){$('cb-forma').value=r.forma||'';tgChq('cb');}['banco','ref','f_ac','mars','musd','mon','chqb','chqn','chqf','obs'].forEach(f=>{const el=$('cb-'+f);if(el)el.value=r[f]||'';});}
@@ -668,11 +668,11 @@ function gFP(){
   const i21=n21*.21,i105=n105*.105,i27=n27*.27,i5=n5*.05,tiva=i21+i105+i27+i5,neto=n21+n105+n27+n5+n0,total=neto+tiva;
   const tars=mon==='USD'?total*tc:total,tusd=mon==='USD'?total:(tc>1?total/tc:0);
   const ep=v('fp-ep')||'PENDIENTE';
-  const rec={id:editIdx>=0?D.facturas_prov[editIdx].id:nid(D.facturas_prov),fe:v('fp-fe'),fv:v('fp-fv'),pv_id:pvId,prov:pv.razon||'',nro:v('fp-nro'),tc:v('fp-tc2')||'Factura A',tg_id:tgId,tg:tg.nom||'',n21,i21,n27,i27,n105,i105,n5,i5,n0,tiva,neto,total,mon,tars,tusd,tc_v:tc,asig:v('fp-asig')||'ESTRUCTURA',op_id:opId,op:op.exp||'',rec:v('fp-rec')||'NO',ep,notas:v('fp-notas')||''};
-  if(editIdx>=0)D.facturas_prov[editIdx]=rec;else D.facturas_prov.push(rec);
+  const datos={id:editIdx>=0?D.facturas_prov[editIdx].id:nid(D.facturas_prov),fe:v('fp-fe'),fv:v('fp-fv'),pv_id:pvId,prov:pv.razon||'',nro:v('fp-nro'),tipo_comp:v('fp-tc2')||'Factura A',tg_id:tgId,tg:tg.nom||'',n21,i21,n27,i27,n105,i105,n5,i5,n0,tiva,neto,total,mon,tars,tusd,tc_v:tc,asig:v('fp-asig')||'ESTRUCTURA',op_id:opId,op:op.exp||'',ep,notas:v('fp-notas')||''};
+  if(editIdx>=0)D.facturas_prov[editIdx]=datos;else D.facturas_prov.push(datos);
   save('facturas_prov');editIdx=-1;cM('m-fp');
   if(ep==='PAGADA'&&confirm('Factura guardada como PAGADA.\n\n¿Registrás el pago ahora?')){
-    setTimeout(()=>{editIdx=-1;oFP('pg-fac',rec.id,false);oPv('pg-pv',pvId);if($('pg-mars'))$('pg-mars').value=tars.toFixed(2);if($('pg-musd'))$('pg-musd').value=tusd.toFixed(2);if($('pg-mon'))$('pg-mon').value=mon;oM('m-pg');},300);
+    setTimeout(()=>{editIdx=-1;oFP('pg-fac',datos.id,false);oPv('pg-pv',pvId);if($('pg-mars'))$('pg-mars').value=tars.toFixed(2);if($('pg-musd'))$('pg-musd').value=tusd.toFixed(2);if($('pg-mon'))$('pg-mon').value=mon;oM('m-pg');},300);
   }else{toast('Factura guardada ✓');}
   render('fprov');
 }
@@ -685,11 +685,11 @@ function gFE(){
   const i21=n21*.21,i105=n105*.105,i27=n27*.27,i5=n5*.05,tiva=i21+i105+i27+i5,neto=n21+n105+n27+n5+n0,total=neto+tiva;
   const tars=mon==='USD'?total*tc:total,tusd=mon==='USD'?total:(tc>1?total/tc:0);
   const ec=v('fe-ec')||'PENDIENTE';
-  const rec={id:editIdx>=0?D.facturas_emit[editIdx].id:nid(D.facturas_emit),fe:v('fe-fe'),fv:v('fe-fv'),cl_id:cliId,cliente:cli.razon||'',nro:v('fe-nro'),tc:v('fe-tc2')||'Factura A',op_id:opId,op:op.exp||'',concepto:v('fe-concepto')||'',n21,i21,n27,i27,n105,i105,n5,i5,n0,tiva,neto,tars,mon,tusd,tc_v:tc,ec,notas:v('fe-notas')||''};
-  if(editIdx>=0)D.facturas_emit[editIdx]=rec;else D.facturas_emit.push(rec);
+  const datosE={id:editIdx>=0?D.facturas_emit[editIdx].id:nid(D.facturas_emit),fe:v('fe-fe'),fv:v('fe-fv'),cl_id:cliId,cliente:cli.razon||'',nro:v('fe-nro'),tipo_comp:v('fe-tc2')||'Factura A',op_id:opId,op:op.exp||'',concepto:v('fe-concepto')||'',n21,i21,n27,i27,n105,i105,n5,i5,n0,tiva,neto,tars,mon,tusd,tc_v:tc,ec,notas:v('fe-notas')||''};
+  if(editIdx>=0)D.facturas_emit[editIdx]=datosE;else D.facturas_emit.push(datosE);
   save('facturas_emit');editIdx=-1;cM('m-fe');
   if(ec==='COBRADA'&&confirm('Factura registrada como COBRADA.\n\n¿Registrás la cobranza ahora?')){
-    setTimeout(()=>{editIdx=-1;oFE('cb-fac',rec.id,false);oCl('cb-cl',cliId);if($('cb-mars'))$('cb-mars').value=tars.toFixed(2);if($('cb-musd'))$('cb-musd').value=tusd.toFixed(2);if($('cb-mon'))$('cb-mon').value=mon;oM('m-cb');},300);
+    setTimeout(()=>{editIdx=-1;oFE('cb-fac',datosE.id,false);oCl('cb-cl',cliId);if($('cb-mars'))$('cb-mars').value=tars.toFixed(2);if($('cb-musd'))$('cb-musd').value=tusd.toFixed(2);if($('cb-mon'))$('cb-mon').value=mon;oM('m-cb');},300);
   }else{toast('Factura registrada ✓');}
   render('femit');
 }
@@ -828,7 +828,6 @@ render('dash');
     </div>
     <div class="fgrp"><label class="flbl">Asignación</label><select class="fc" id="fp-asig"><option>OPERACION</option><option>ESTRUCTURA</option></select></div>
     <div class="fgrp"><label class="flbl">Operación</label><select class="fc" id="fp-op"></select></div>
-    <div class="fgrp"><label class="flbl">Recuperable</label><select class="fc" id="fp-rec"><option>SI</option><option>NO</option></select></div>
     <div class="fgrp"><label class="flbl">Estado Pago</label><select class="fc" id="fp-ep"><option>PENDIENTE</option><option>PAGADA</option></select></div>
     <div class="fgrp fsp"><label class="flbl">Notas</label><textarea class="fc" id="fp-notas" rows="2"></textarea></div>
   </div></div>
