@@ -1534,11 +1534,13 @@ async function loadAllData() {
 // Sincronización directa via Google Sheets CSV — funciona desde Vercel (https://)
 
 function parseCSV(text) {
+  // Remove BOM and normalize line endings
+  text = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   var result = [];
   var lines = text.split('\n');
   for (var li = 0; li < lines.length; li++) {
-    var line = lines[li];
-    if (!line.trim()) continue;
+    var line = lines[li].trim();
+    if (!line) continue;
     var row = [];
     var cur = '';
     var inQ = false;
@@ -1548,12 +1550,12 @@ function parseCSV(text) {
         if (inQ && line[i+1] === '"') { cur += '"'; i++; }
         else inQ = !inQ;
       } else if (ch === ',' && !inQ) {
-        row.push(cur); cur = '';
+        row.push(cur.trim()); cur = '';
       } else {
         cur += ch;
       }
     }
-    row.push(cur);
+    row.push(cur.trim());
     result.push(row);
   }
   return result;
@@ -1831,13 +1833,13 @@ function renderProveedores() {
     ? '<div class="empty-state"><div class="icon">🏭</div><p>No hay proveedores cargados</p></div>'
     : `<table><thead><tr><th>#</th><th>Razón Social</th><th>CUIT</th><th>Tipo de Gasto</th><th>Cond. Pago</th><th>Moneda</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
     ${d.map((p,i) => `<tr>
-      <td class="td-mono">${p.ID_PROVEEDOR||i+1}</td>
-      <td class="td-main">${p.RAZON_SOCIAL}</td>
-      <td class="td-mono">${p.CUIT}</td>
-      <td>${p.TIPO_GASTO_DESC||p.SUBCATEGORIA||''}</td>
-      <td>${p.CONDICION_PAGO||'-'}</td>
-      <td>${p.MONEDA||'ARS'}</td>
-      <td>${estadoBadge(p.ACTIVO||'SI')}</td>
+      <td class="td-mono">${g(p,'ID_PROVEEDOR')||i+1}</td>
+      <td class="td-main">${g(p,'RAZON_SOCIAL')}</td>
+      <td class="td-mono">${g(p,'CUIT')}</td>
+      <td>${g(p,'TIPO_GASTO_DESC','SUBCATEGORIA')}</td>
+      <td>${g(p,'CONDICION_PAGO')}</td>
+      <td>${g(p,'MONEDA')}</td>
+      <td>${estadoBadge(g(p,'ACTIVO'))}</td>
       <td>
         <button class="btn btn-ghost btn-sm" onclick="editRecord('proveedores',${i})">✏️</button>
         <button class="btn btn-danger btn-sm" onclick="deleteRecord('proveedores',${i})">🗑️</button>
@@ -1852,13 +1854,13 @@ function renderClientes() {
     ? '<div class="empty-state"><div class="icon">👥</div><p>No hay clientes cargados</p></div>'
     : `<table><thead><tr><th>#</th><th>Razón Social</th><th>CUIT</th><th>Contacto</th><th>Email</th><th>Cond. Pago</th><th>Moneda</th><th>Acciones</th></tr></thead><tbody>
     ${d.map((c,i) => `<tr>
-      <td class="td-mono">${c.ID_CLIENTE||i+1}</td>
-      <td class="td-main">${c.RAZON_SOCIAL}</td>
-      <td class="td-mono">${c.CUIT}</td>
-      <td>${c.CONTACTO_NOMBRE||'-'}</td>
-      <td style="font-size:12px">${c.EMAIL||'-'}</td>
-      <td>${c.CONDICION_PAGO||'-'}</td>
-      <td>${c.MONEDA_FACT||'ARS'}</td>
+      <td class="td-mono">${g(c,'ID_CLIENTE')||i+1}</td>
+      <td class="td-main">${g(c,'RAZON_SOCIAL')}</td>
+      <td class="td-mono">${g(c,'CUIT')}</td>
+      <td>${g(c,'CONTACTO_NOMBRE')}</td>
+      <td style="font-size:12px">${g(c,'EMAIL')}</td>
+      <td>${g(c,'CONDICION_PAGO')}</td>
+      <td>${g(c,'MONEDA_FACT')}</td>
       <td>
         <button class="btn btn-ghost btn-sm" onclick="editRecord('clientes',${i})">✏️</button>
         <button class="btn btn-danger btn-sm" onclick="deleteRecord('clientes',${i})">🗑️</button>
