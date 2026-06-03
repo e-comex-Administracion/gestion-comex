@@ -89,7 +89,19 @@ textarea.fc{resize:vertical;min-height:52px}
 </head>
 <body>
 <div id="sb">
-  <div class="sbl"><h1>GestiónComex</h1><span>Sistema Administrativo</span></div>
+  <div class="sbl">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+        <div style="width:22px;height:3px;border-radius:2px;background:linear-gradient(90deg,#4f9cf9,#a8d4ff)"></div>
+        <div style="width:16px;height:3px;border-radius:2px;background:linear-gradient(90deg,#4f9cf9,#a8d4ff);opacity:.75"></div>
+        <div style="width:10px;height:3px;border-radius:2px;background:linear-gradient(90deg,#4f9cf9,#a8d4ff);opacity:.45"></div>
+      </div>
+      <div>
+        <div style="font-size:17px;font-weight:800;color:#e8eaf0;letter-spacing:1px;line-height:1.1;font-family:'Inter',sans-serif">E-COMEX</div>
+        <div style="font-size:10px;color:#4f9cf9;font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:1.5px;margin-top:1px">Gestión</div>
+      </div>
+    </div>
+  </div>
   <div class="sbs"><div class="sbh">Principal</div>
     <button class="ni on" onclick="goTo('dash')"><span class="ic">📊</span>Dashboard</button></div>
   <div class="sbs"><div class="sbh">Operaciones</div>
@@ -524,7 +536,7 @@ function rXport(pg){
   pg.innerHTML=`<div class="card" style="margin-bottom:14px"><div class="ch"><span class="cn">📤 Exportar a Excel</span></div><div class="cb">
     <p style="color:var(--tx2);font-size:12px;margin-bottom:14px">Exportá todos los datos en un archivo Excel con filtros automáticos, columnas bien organizadas y listo para analizar.</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
-      ${[['📊','Exportar Todo','Todas las tablas','xTodo()'],['📦','Expedientes','Operaciones','xT("operaciones")'],['🧾','Fact. Proveedores','Con detalle IVA','xT("facturas_prov")'],['📄','Fact. Emitidas','Facturas al cliente','xT("facturas_emit")'],['💸','Pagos','Registro de pagos','xT("pagos")'],['💰','Cobranzas','Registro de cobros','xT("cobranzas")'],['🏭','Proveedores','Maestro','xT("proveedores")'],['👥','Clientes','Maestro','xT("clientes")'],['📉','Rentabilidad','Análisis por operación','xRent()']].map(([ic,t,d,fn])=>
+      ${[['📊','Exportar Todo','Todas las tablas','xTodo()'],['📦','Expedientes','Operaciones','xT('operaciones')'],['🧾','Fact. Proveedores','Con detalle IVA','xT('facturas_prov')'],['📄','Fact. Emitidas','Facturas al cliente','xT('facturas_emit')'],['💸','Pagos','Registro de pagos','xT('pagos')'],['💰','Cobranzas','Registro de cobros','xT('cobranzas')'],['🏭','Proveedores','Maestro','xT('proveedores')'],['👥','Clientes','Maestro','xT('clientes')'],['📉','Rentabilidad','Análisis por operación','xRent()']].map(([ic,t,d,fn])=>
         `<div class="card" style="cursor:pointer;margin-bottom:0" onclick="${fn}"><div class="cb" style="text-align:center;padding:16px">
           <div style="font-size:26px;margin-bottom:6px">${ic}</div>
           <div style="font-weight:600;font-size:12px">${t}</div>
