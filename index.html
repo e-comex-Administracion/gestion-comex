@@ -408,12 +408,12 @@ function rCashF(pg){
   const pp=D.facturas_prov.filter(f=>f.ep==='PENDIENTE');
   const pc=D.facturas_emit.filter(f=>f.ec==='PENDIENTE');
   const facturadas=new Set(D.facturas_emit.map(f=>f.op_id));
-  const est=D.operaciones.filter(o=>o.importe_ref>0&&o.estado!=='CERRADA'&&o.estado!=='CANCELADA');
+  const est=D.operaciones.filter(o=>(o.importe_ref||0)>0&&o.estado!=='CERRADA'&&o.estado!=='CANCELADA');
   const estSinFac=est.filter(o=>!facturadas.has(o.id));
   const tP=pp.reduce((a,f)=>a+(f.tars||0),0);
   const tC=pc.reduce((a,f)=>a+(f.tars||0),0);
-  const tc=lTC();
-  const tEst=estSinFac.reduce((a,o)=>a+(o.moneda_ref==='USD'?(o.importe_ref*tc):(o.importe_ref||0)),0);
+  const tcRef=lTC();
+  const tEst=estSinFac.reduce((a,o)=>a+((o.moneda_ref==='USD'?(o.importe_ref*tcRef):(o.importe_ref||0))),0);
   const totC=D.cobranzas.reduce((a,c)=>a+(c.mars||0),0),totP=D.pagos.reduce((a,p)=>a+(p.mars||0),0);
   pg.innerHTML=sg([
     {l:'Por Pagar',v:'$ '+fN(tP),s:pp.length+' facturas',c:'og'},
@@ -423,15 +423,15 @@ function rCashF(pg){
   ])+`<div class="gr2">
     <div class="card"><div class="ch"><span class="cn">Vencimientos de Pago</span></div><div class="cb">
       ${tbl(['Proveedor','Vence','Total','Estado'],pp.sort((a,b)=>a.fv>b.fv?1:-1).map(f=>[`<span class="tdm">${f.prov}</span>`,`<span class="tdc">${f.fv}</span>`,`<span class="tdc rn">$ ${fN(f.tars)}</span>`,eB(f.ep)]),'Sin vencimientos')}</div></div>
-    <div class="card"><div class="ch"><span class="cn">✅ Cobranzas con Factura</span></div><div class="cb">
+    <div class="card"><div class="ch"><span class="cn">Cobranzas con Factura</span></div><div class="cb">
       ${tbl(['Cliente','Nro. Factura','Vence','ARS','USD','Estado'],pc.sort((a,b)=>a.fv>b.fv?1:-1).map(f=>[`<span class="tdm">${f.cliente}</span>`,`<span class="tdc" style="font-size:10px">${f.nro}</span>`,`<span class="tdc">${f.fv}</span>`,`<span class="tdc rp">$ ${fN(f.tars)}</span>`,fU(f.tusd),eB(f.ec)]),'Sin facturas pendientes de cobro')}</div></div>
   </div>
-  <div class="card" style="margin-top:14px"><div class="ch"><span class="cn">📋 Cobranzas Estimadas (sin factura)</span><span style="font-size:11px;color:var(--tx3);margin-left:8px">Basado en importe de referencia del expediente</span></div><div class="cb">
+  <div class="card"><div class="ch"><span class="cn">Cobranzas Estimadas (sin factura)</span><span style="font-size:11px;color:var(--tx3);margin-left:8px">Desde importe de referencia del expediente</span></div><div class="cb">
     ${tbl(['Expediente','Cliente','Importe Referencia','F. Est. Cobro','Estado'],
       estSinFac.sort((a,b)=>(a.f_cobro_est||'9999')>(b.f_cobro_est||'9999')?1:-1).map(o=>{
         const iRef=o.moneda_ref==='USD'?fU(o.importe_ref):'$ '+fN(o.importe_ref);
         return [`<span class="tdc" style="color:var(--acc)">${o.exp}</span>`,`<span class="tdm">${o.cliente}</span>`,`<span class="tdc rp">${iRef}</span>`,o.f_cobro_est?`<span class="tdc">${o.f_cobro_est}</span>`:'<span style="color:var(--org)">Sin fecha</span>',eB(o.estado)];
-      }),'Sin cobranzas estimadas — ingresá el importe de referencia en el expediente')}</div></div>`;
+      }),'Sin cobranzas estimadas — ingresá importe de referencia en el expediente')}</div></div>`;
 }
 
 function rProvs(pg,ac){
@@ -674,8 +674,8 @@ function gCl(){
 function gEx(){
   const exp=v('ex-exp').trim();if(!exp){toast('Nro. Expediente es obligatorio','er');return;}
   const cliId=parseInt(v('ex-cl'))||0;const cli=D.clientes.find(c=>c.id===cliId)||{};
-  const datos={id:editIdx>=0?D.operaciones[editIdx].id:nid(D.operaciones),exp,cli_id:cliId,cliente:cli.razon||'',merc:v('ex-merc')||'',pais:v('ex-pais')||'',tipo:v('ex-tipo')||'',f_ap:v('ex-f_ap')||'',f_cl:v('ex-f_cl')||'',estado:v('ex-estado')||'EN TRAMITE',tc:parseFloat(v('ex-tc'))||lTC(),hon_usd:parseFloat(v('ex-hon_usd'))||0,hon_ars:parseFloat(v('ex-hon_ars'))||0,importe_ref:parseFloat(v('ex-importe_ref'))||0,moneda_ref:v('ex-moneda_ref')||'USD',f_cobro_est:v('ex-f_cobro_est')||'',notas:v('ex-notas')||''};
-  if(editIdx>=0)D.operaciones[editIdx]=datos;else D.operaciones.push(datos);
+  const rec={id:editIdx>=0?D.operaciones[editIdx].id:nid(D.operaciones),exp,cli_id:cliId,cliente:cli.razon||'',merc:v('ex-merc')||'',pais:v('ex-pais')||'',tipo:v('ex-tipo')||'',f_ap:v('ex-f_ap')||'',f_cl:v('ex-f_cl')||'',estado:v('ex-estado')||'EN TRAMITE',tc:parseFloat(v('ex-tc'))||lTC(),hon_usd:parseFloat(v('ex-hon_usd'))||0,hon_ars:parseFloat(v('ex-hon_ars'))||0,importe_ref:parseFloat(v('ex-importe_ref'))||0,moneda_ref:v('ex-moneda_ref')||'USD',f_cobro_est:v('ex-f_cobro_est')||'',notas:v('ex-notas')||''};
+  if(editIdx>=0)D.operaciones[editIdx]=rec;else D.operaciones.push(rec);
   save('operaciones');editIdx=-1;cM('m-ex');toast('Operación guardada ✓');render('exps');
 }
 function gFP(){
