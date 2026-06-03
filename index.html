@@ -290,10 +290,12 @@ function rDash(pg){
 function rExps(pg,ac){
   ac.innerHTML=`<button class="btn bp bs" onclick="oM('m-ex')">＋ Nueva Operación</button>`;
   pg.innerHTML=`<div class="card"><div class="ch"><span class="cn">Expedientes de Importación</span></div><div class="cb">
-    ${tbl(['Expediente','Cliente','Mercadería','País','Apertura','Cierre','TC','Estado','Acciones'],
+    ${tbl(['Expediente','Cliente','Mercadería','País','Apertura','Cierre','TC','Imp. Referencia','F. Est. Cobro','Estado','Acciones'],
       D.operaciones.map((o,i)=>[
         `<span class="tdc" style="color:var(--acc);cursor:pointer" onclick="vExp(${i})" title="Ver detalle">${o.exp} 🔍</span>`,
-        `<span class="tdm">${o.cliente}</span>`,o.merc.substring(0,28)+'...',o.pais,o.f_ap||'-',o.f_cl||'-',`$ ${fN(o.tc)}`,eB(o.estado),ac2('operaciones',i)
+        `<span class="tdm">${o.cliente}</span>`,o.merc.substring(0,28)+'...',o.pais,o.f_ap||'-',o.f_cl||'-',`$ ${fN(o.tc)}`,
+        o.importe_ref?`<span class="tdc rp">${o.moneda_ref==='USD'?fU(o.importe_ref):'$ '+fN(o.importe_ref)}</span>`:'—',
+        o.f_cobro_est||'—',eB(o.estado),ac2('operaciones',i)
       ]))}</div></div>`;
 }
 
@@ -306,7 +308,8 @@ function vExp(idx){
   const res=tfA-tgA,marg=tfA>0?(res/tfA*100).toFixed(1):0;
   const rc=res>=0?'var(--grn)':'var(--red)',rbg=res>=0?'rgba(34,197,94,.08)':'rgba(239,68,68,.08)',rbr=res>=0?'rgba(34,197,94,.2)':'rgba(239,68,68,.2)';
   let h=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px">`;
-  [['Cliente',o.cliente],['Estado',eB(o.estado)],['País',o.pais],['TC','$ '+fN(o.tc)],['Apertura',o.f_ap||'-'],['Cierre',o.f_cl||'—']].forEach(([l,val])=>{
+  const refStr=o.importe_ref?(o.moneda_ref==='USD'?fU(o.importe_ref):'$ '+fN(o.importe_ref)):'-';
+  [['Cliente',o.cliente],['Estado',eB(o.estado)],['País',o.pais],['TC','$ '+fN(o.tc)],['Apertura',o.f_ap||'-'],['Cierre',o.f_cl||'—'],['Imp. Referencia',`<span class="rp">${refStr}</span>`],['F. Est. Cobro',o.f_cobro_est||'-']].forEach(([l,val])=>{
     h+=`<div style="background:var(--s2);border-radius:6px;padding:8px"><div style="font-size:9px;color:var(--tx3);text-transform:uppercase">${l}</div><div style="font-weight:600;margin-top:2px;font-size:12px">${val}</div></div>`;
   });
   h+=`</div><div style="background:var(--s2);border-radius:6px;padding:8px;margin-bottom:12px;font-size:11px"><b>Mercadería:</b> ${o.merc} | <b>Tipo:</b> ${o.tipo}</div>`;
@@ -402,16 +405,33 @@ function rCheqs(pg){
 }
 
 function rCashF(pg){
-  const pp=D.facturas_prov.filter(f=>f.ep==='PENDIENTE'),pc=D.facturas_emit.filter(f=>f.ec==='PENDIENTE');
-  const tP=pp.reduce((a,f)=>a+(f.tars||0),0),tC=pc.reduce((a,f)=>a+(f.tars||0),0);
+  const pp=D.facturas_prov.filter(f=>f.ep==='PENDIENTE');
+  const pc=D.facturas_emit.filter(f=>f.ec==='PENDIENTE');
+  const facturadas=new Set(D.facturas_emit.map(f=>f.op_id));
+  const est=D.operaciones.filter(o=>(o.importe_ref||0)>0&&o.estado!=='CERRADA'&&o.estado!=='CANCELADA');
+  const estSinFac=est.filter(o=>!facturadas.has(o.id));
+  const tP=pp.reduce((a,f)=>a+(f.tars||0),0);
+  const tC=pc.reduce((a,f)=>a+(f.tars||0),0);
+  const tcRef=lTC();
+  const tEst=estSinFac.reduce((a,o)=>a+((o.moneda_ref==='USD'?(o.importe_ref*tcRef):(o.importe_ref||0))),0);
   const totC=D.cobranzas.reduce((a,c)=>a+(c.mars||0),0),totP=D.pagos.reduce((a,p)=>a+(p.mars||0),0);
-  pg.innerHTML=sg([{l:'Por Pagar',v:'$ '+fN(tP),s:pp.length+' facturas',c:'og'},{l:'Por Cobrar',v:'$ '+fN(tC),s:pc.length+' facturas',c:'gn'},{l:'Total Cobrado',v:'$ '+fN(totC),c:'bl'},{l:'Saldo Neto',v:'$ '+fN(totC-totP),c:totC-totP>=0?'gn':'pu'}])+
-    `<div class="gr2">
-      <div class="card"><div class="ch"><span class="cn">Vencimientos de Pago</span></div><div class="cb">
-        ${tbl(['Proveedor','Vence','Total','Estado'],pp.sort((a,b)=>a.fv>b.fv?1:-1).map(f=>[`<span class="tdm">${f.prov}</span>`,`<span class="tdc">${f.fv}</span>`,`<span class="tdc rn">$ ${fN(f.tars)}</span>`,eB(f.ep)]),'Sin vencimientos')}</div></div>
-      <div class="card"><div class="ch"><span class="cn">Cobranzas Esperadas</span></div><div class="cb">
-        ${tbl(['Cliente','Vence','Total','Estado'],pc.sort((a,b)=>a.fv>b.fv?1:-1).map(f=>[`<span class="tdm">${f.cliente}</span>`,`<span class="tdc">${f.fv}</span>`,`<span class="tdc rp">$ ${fN(f.tars)}</span>`,eB(f.ec)]),'Sin cobranzas')}</div></div>
-    </div>`;
+  pg.innerHTML=sg([
+    {l:'Por Pagar',v:'$ '+fN(tP),s:pp.length+' facturas',c:'og'},
+    {l:'Cobrar c/Factura',v:'$ '+fN(tC),s:pc.length+' pendientes',c:'gn'},
+    {l:'Cobrar s/Factura (est.)',v:'$ '+fN(tEst),s:estSinFac.length+' ops estimadas',c:'bl'},
+    {l:'Total Cobrado',v:'$ '+fN(totC),s:'Pagado: $ '+fN(totP),c:'pu'},
+  ])+`<div class="gr2">
+    <div class="card"><div class="ch"><span class="cn">Vencimientos de Pago</span></div><div class="cb">
+      ${tbl(['Proveedor','Vence','Total','Estado'],pp.sort((a,b)=>a.fv>b.fv?1:-1).map(f=>[`<span class="tdm">${f.prov}</span>`,`<span class="tdc">${f.fv}</span>`,`<span class="tdc rn">$ ${fN(f.tars)}</span>`,eB(f.ep)]),'Sin vencimientos')}</div></div>
+    <div class="card"><div class="ch"><span class="cn">Cobranzas con Factura</span></div><div class="cb">
+      ${tbl(['Cliente','Nro. Factura','Vence','ARS','USD','Estado'],pc.sort((a,b)=>a.fv>b.fv?1:-1).map(f=>[`<span class="tdm">${f.cliente}</span>`,`<span class="tdc" style="font-size:10px">${f.nro}</span>`,`<span class="tdc">${f.fv}</span>`,`<span class="tdc rp">$ ${fN(f.tars)}</span>`,fU(f.tusd),eB(f.ec)]),'Sin facturas pendientes de cobro')}</div></div>
+  </div>
+  <div class="card"><div class="ch"><span class="cn">Cobranzas Estimadas (sin factura)</span><span style="font-size:11px;color:var(--tx3);margin-left:8px">Desde importe de referencia del expediente</span></div><div class="cb">
+    ${tbl(['Expediente','Cliente','Importe Referencia','F. Est. Cobro','Estado'],
+      estSinFac.sort((a,b)=>(a.f_cobro_est||'9999')>(b.f_cobro_est||'9999')?1:-1).map(o=>{
+        const iRef=o.moneda_ref==='USD'?fU(o.importe_ref):'$ '+fN(o.importe_ref);
+        return [`<span class="tdc" style="color:var(--acc)">${o.exp}</span>`,`<span class="tdm">${o.cliente}</span>`,`<span class="tdc rp">${iRef}</span>`,o.f_cobro_est?`<span class="tdc">${o.f_cobro_est}</span>`:'<span style="color:var(--org)">Sin fecha</span>',eB(o.estado)];
+      }),'Sin cobranzas estimadas — ingresá importe de referencia en el expediente')}</div></div>`;
 }
 
 function rProvs(pg,ac){
@@ -524,7 +544,7 @@ function rXport(pg){
   pg.innerHTML=`<div class="card" style="margin-bottom:14px"><div class="ch"><span class="cn">📤 Exportar a Excel</span></div><div class="cb">
     <p style="color:var(--tx2);font-size:12px;margin-bottom:14px">Exportá todos los datos en un archivo Excel con filtros automáticos, columnas bien organizadas y listo para analizar.</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
-      ${[['📊','Exportar Todo','Todas las tablas','xTodo()'],['📦','Expedientes','Operaciones','xT("operaciones")'],['🧾','Fact. Proveedores','Con detalle IVA','xT("facturas_prov")'],['📄','Fact. Emitidas','Facturas al cliente','xT("facturas_emit")'],['💸','Pagos','Registro de pagos','xT("pagos")'],['💰','Cobranzas','Registro de cobros','xT("cobranzas")'],['🏭','Proveedores','Maestro','xT("proveedores")'],['👥','Clientes','Maestro','xT("clientes")'],['📉','Rentabilidad','Análisis por operación','xRent()']].map(([ic,t,d,fn])=>
+      ${[['📊','Exportar Todo','Todas las tablas','xTodo()'],['📦','Expedientes','Operaciones',"xT('operaciones')"],['🧾','Fact. Proveedores','Con detalle IVA',"xT('facturas_prov')"],['📄','Fact. Emitidas','Facturas al cliente',"xT('facturas_emit')"],['💸','Pagos','Registro de pagos',"xT('pagos')"],['💰','Cobranzas','Registro de cobros',"xT('cobranzas')"],['🏭','Proveedores','Maestro',"xT('proveedores')"],['👥','Clientes','Maestro',"xT('clientes')"],['📉','Rentabilidad','Análisis por operación','xRent()']].map(([ic,t,d,fn])=>
         `<div class="card" style="cursor:pointer;margin-bottom:0" onclick="${fn}"><div class="cb" style="text-align:center;padding:16px">
           <div style="font-size:26px;margin-bottom:6px">${ic}</div>
           <div style="font-weight:600;font-size:12px">${t}</div>
@@ -552,7 +572,7 @@ function mkWS(wb,nom,headers,rows){
   return ws;
 }
 
-function _xOps(wb){mkWS(wb,'Expedientes',['Expediente','Cliente','País','Tipo Importación','Fecha Apertura','Fecha Cierre','Estado','TC','Hon. USD','Hon. ARS','Notas'],D.operaciones.map(o=>[o.exp,o.cliente,o.pais,o.tipo,o.f_ap,o.f_cl||'',o.estado,o.tc||0,o.hon_usd||0,o.hon_ars||0,o.notas||'']));}
+function _xOps(wb){mkWS(wb,'Expedientes',['Expediente','Cliente','País','Tipo Importación','Fecha Apertura','Fecha Cierre','Estado','TC','Hon. USD','Hon. ARS','Importe Referencia','Moneda Ref.','Fecha Est. Cobro','Notas'],D.operaciones.map(o=>[o.exp,o.cliente,o.pais,o.tipo,o.f_ap,o.f_cl||'',o.estado,o.tc||0,o.hon_usd||0,o.hon_ars||0,o.importe_ref||0,o.moneda_ref||'USD',o.f_cobro_est||'',o.notas||'']));}
 function _xFP(wb){mkWS(wb,'Facturas Proveedores',['Fecha Emisión','Fecha Vencimiento','Proveedor','Nro. Factura','Tipo Comp.','Tipo de Gasto','Neto 21%','IVA 21%','Neto 27%','IVA 27%','Neto 10.5%','IVA 10.5%','Neto 5%','IVA 5%','Neto Exento','Total IVA','Neto Total','Total','Moneda','Total ARS','Total USD','TC Usado','Asignación','Operación','Estado Pago','Notas'],D.facturas_prov.map(f=>[f.fe,f.fv,f.prov,f.nro,f.tipo_comp||f.tc,f.tg,f.n21||0,f.i21||0,f.n27||0,f.i27||0,f.n105||0,f.i105||0,f.n5||0,f.i5||0,f.n0||0,f.tiva||0,f.neto||0,f.total||0,f.mon,f.tars||0,f.tusd||0,f.tc_v||0,f.asig,f.op||'',f.ep,f.notas||'']));}
 function _xFE(wb){mkWS(wb,'Facturas Emitidas',['Fecha Emisión','Fecha Vencimiento','Cliente','Nro. ARCA','Tipo Comp.','Operación','Concepto','Neto 21%','IVA 21%','Neto 10.5%','IVA 10.5%','Neto Exento','Total IVA','Neto Total','Total ARS','Moneda','Total USD','TC','Estado Cobro','Notas'],D.facturas_emit.map(f=>[f.fe,f.fv,f.cliente,f.nro,f.tc,f.op||'',f.concepto,f.n21||0,f.i21||0,f.n105||0,f.i105||0,f.n0||0,f.tiva||0,f.neto||0,f.tars||0,f.mon,f.tusd||0,f.tc_v||0,f.ec,f.notas||'']));}
 function _xPg(wb){mkWS(wb,'Pagos',['Fecha Pago','Proveedor','Nro. Factura','Forma de Pago','Banco','Referencia','Fecha Acreditación','Monto ARS','Monto USD','Moneda','Cheque Banco','Cheque Nro.','Cheque Fecha','Observaciones'],D.pagos.map(p=>[p.fp,p.prov,p.nro_f||'',p.forma,p.banco||'',p.ref||'',p.f_ac||'',p.mars||0,p.musd||0,p.mon,p.chqb||'',p.chqn||'',p.chqf||'',p.obs||'']));}
@@ -598,7 +618,7 @@ function impXlsx(inp){
 
 function mapImp(k,r,i){
   const m={
-    operaciones:r=>({id:i,exp:r['Expediente']||'',cliente:r['Cliente']||'',merc:r['Mercadería']||'',pais:r['País']||'',tipo:r['Tipo Importación']||'',f_ap:r['Fecha Apertura']||'',f_cl:r['Fecha Cierre']||'',estado:r['Estado']||'',tc:parseFloat(r['TC'])||0,hon_usd:parseFloat(r['Hon. USD'])||0,hon_ars:parseFloat(r['Hon. ARS'])||0,notas:r['Notas']||''}),
+    operaciones:r=>({id:i,exp:r['Expediente']||'',cliente:r['Cliente']||'',merc:r['Mercadería']||'',pais:r['País']||'',tipo:r['Tipo Importación']||'',f_ap:r['Fecha Apertura']||'',f_cl:r['Fecha Cierre']||'',estado:r['Estado']||'',tc:parseFloat(r['TC'])||0,hon_usd:parseFloat(r['Hon. USD'])||0,hon_ars:parseFloat(r['Hon. ARS'])||0,importe_ref:parseFloat(r['Importe Referencia'])||0,moneda_ref:r['Moneda Ref.']||'USD',f_cobro_est:r['Fecha Est. Cobro']||'',notas:r['Notas']||''}),
     facturas_prov:r=>({id:i,fe:r['Fecha Emisión']||'',fv:r['Fecha Vencimiento']||'',prov:r['Proveedor']||'',nro:r['Nro. Factura']||'',tc:r['Tipo Comp.']||'',tg:r['Tipo de Gasto']||'',n21:parseFloat(r['Neto 21%'])||0,i21:parseFloat(r['IVA 21%'])||0,n105:parseFloat(r['Neto 10.5%'])||0,i105:parseFloat(r['IVA 10.5%'])||0,n0:parseFloat(r['Neto Exento'])||0,tiva:parseFloat(r['Total IVA'])||0,neto:parseFloat(r['Neto Total'])||0,total:parseFloat(r['Total'])||0,mon:r['Moneda']||'ARS',tars:parseFloat(r['Total ARS'])||0,tusd:parseFloat(r['Total USD'])||0,tc_v:parseFloat(r['TC Usado'])||0,asig:r['Asignación']||'ESTRUCTURA',op:r['Operación']||'',ep:r['Estado Pago']||'PENDIENTE',notas:r['Notas']||''}),
     facturas_emit:r=>({id:i,fe:r['Fecha Emisión']||'',fv:r['Fecha Vencimiento']||'',cliente:r['Cliente']||'',nro:r['Nro. ARCA']||'',tc:r['Tipo Comp.']||'',op:r['Operación']||'',concepto:r['Concepto']||'',n21:parseFloat(r['Neto 21%'])||0,i21:parseFloat(r['IVA 21%'])||0,n105:parseFloat(r['Neto 10.5%'])||0,i105:parseFloat(r['IVA 10.5%'])||0,n0:parseFloat(r['Neto Exento'])||0,tiva:parseFloat(r['Total IVA'])||0,neto:parseFloat(r['Neto Total'])||0,tars:parseFloat(r['Total ARS'])||0,mon:r['Moneda']||'USD',tusd:parseFloat(r['Total USD'])||0,tc_v:parseFloat(r['TC'])||0,ec:r['Estado Cobro']||'PENDIENTE',notas:r['Notas']||''}),
     pagos:r=>({id:i,fp:r['Fecha Pago']||'',prov:r['Proveedor']||'',nro_f:r['Nro. Factura']||'',forma:r['Forma de Pago']||'',banco:r['Banco']||'',ref:r['Referencia']||'',f_ac:r['Fecha Acreditación']||'',mars:parseFloat(r['Monto ARS'])||0,musd:parseFloat(r['Monto USD'])||0,mon:r['Moneda']||'ARS',chqb:r['Cheque Banco']||'',chqn:r['Cheque Nro.']||'',chqf:r['Cheque Fecha']||'',obs:r['Observaciones']||''}),
@@ -631,7 +651,7 @@ function edit(tabla,idx){
 // ═══ FORM RESET HELPERS ═══════════════════════
 function rstPv(r={}){editIdx=r.id?D.proveedores.findIndex(x=>x.id===r.id):-1;['razon','cuit','iva','tel','email','cpago','moneda','activo','notas'].forEach(f=>{const el=$('pv-'+f);if(el)el.value=r[f]||'';});oTG('pv-tg',r.tg_id||'');}
 function rstCl(r={}){editIdx=r.id?D.clientes.findIndex(x=>x.id===r.id):-1;['razon','cuit','iva','contacto','tel','email','rubro','cpago','moneda','activo','notas'].forEach(f=>{const el=$('cl-'+f);if(el)el.value=r[f]||'';});}
-function rstEx(r={}){['exp','pais','tipo','f_ap','f_cl','estado','tc','hon_usd','hon_ars','notas'].forEach(f=>{const el=$('ex-'+f);if(el)el.value=r[f]||'';});oCl('ex-cl',r.cli_id||'');}
+function rstEx(r={}){['exp','pais','tipo','f_ap','f_cl','estado','tc','hon_usd','hon_ars','importe_ref','f_cobro_est','notas'].forEach(f=>{const el=$('ex-'+f);if(el)el.value=r[f]||'';});if($('ex-moneda_ref'))$('ex-moneda_ref').value=r.moneda_ref||'USD';oCl('ex-cl',r.cli_id||'');}
 function rstFP(r={}){oPv('fp-pv',r.pv_id||'');oTG('fp-tg',r.tg_id||'');oOp('fp-op',r.op_id||'');['fe','fv','nro','asig','ep','notas'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||'';});if($('fp-tc2'))$('fp-tc2').value=r.tc||'Factura A';['n21','n105','n0'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||0;});if($('fp-mon'))$('fp-mon').value=r.mon||'ARS';if($('fp-tc'))$('fp-tc').value=r.tc_v||lTC();cIVA('fp');}
 function rstFE(r={}){oCl('fe-cl',r.cl_id||'');oOp('fe-op',r.op_id||'',editIdx<0);['fe','fv','nro','concepto','ec','notas'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||'';});if($('fe-tc2'))$('fe-tc2').value=r.tc||'Factura A';['n21','n105','n0'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||0;});if($('fe-mon'))$('fe-mon').value=r.mon||'USD';if($('fe-tc'))$('fe-tc').value=r.tc_v||lTC();cIVA('fe');}
 function rstPg(r={}){oFP('pg-fac',r.fac_id||'',!r.id);oPv('pg-pv',r.pv_id||'');if($('pg-fp'))$('pg-fp').value=r.fp||'';if($('pg-forma')){$('pg-forma').value=r.forma||'';tgChq('pg');}['banco','ref','f_ac','mars','musd','mon','chqb','chqn','chqf','obs'].forEach(f=>{const el=$('pg-'+f);if(el)el.value=r[f]||'';});}
@@ -654,7 +674,7 @@ function gCl(){
 function gEx(){
   const exp=v('ex-exp').trim();if(!exp){toast('Nro. Expediente es obligatorio','er');return;}
   const cliId=parseInt(v('ex-cl'))||0;const cli=D.clientes.find(c=>c.id===cliId)||{};
-  const rec={id:editIdx>=0?D.operaciones[editIdx].id:nid(D.operaciones),exp,cli_id:cliId,cliente:cli.razon||'',merc:v('ex-merc')||'',pais:v('ex-pais')||'',tipo:v('ex-tipo')||'',f_ap:v('ex-f_ap')||'',f_cl:v('ex-f_cl')||'',estado:v('ex-estado')||'EN TRAMITE',tc:parseFloat(v('ex-tc'))||lTC(),hon_usd:parseFloat(v('ex-hon_usd'))||0,hon_ars:parseFloat(v('ex-hon_ars'))||0,notas:v('ex-notas')||''};
+  const rec={id:editIdx>=0?D.operaciones[editIdx].id:nid(D.operaciones),exp,cli_id:cliId,cliente:cli.razon||'',merc:v('ex-merc')||'',pais:v('ex-pais')||'',tipo:v('ex-tipo')||'',f_ap:v('ex-f_ap')||'',f_cl:v('ex-f_cl')||'',estado:v('ex-estado')||'EN TRAMITE',tc:parseFloat(v('ex-tc'))||lTC(),hon_usd:parseFloat(v('ex-hon_usd'))||0,hon_ars:parseFloat(v('ex-hon_ars'))||0,importe_ref:parseFloat(v('ex-importe_ref'))||0,moneda_ref:v('ex-moneda_ref')||'USD',f_cobro_est:v('ex-f_cobro_est')||'',notas:v('ex-notas')||''};
   if(editIdx>=0)D.operaciones[editIdx]=rec;else D.operaciones.push(rec);
   save('operaciones');editIdx=-1;cM('m-ex');toast('Operación guardada ✓');render('exps');
 }
@@ -790,6 +810,14 @@ render('dash');
     <div class="fgrp"><label class="flbl">TC Utilizado</label><input type="number" class="fc" id="ex-tc" placeholder="1090"></div>
     <div class="fgrp"><label class="flbl">Honorarios USD</label><input type="number" class="fc" id="ex-hon_usd" placeholder="0"></div>
     <div class="fgrp"><label class="flbl">Honorarios ARS</label><input type="number" class="fc" id="ex-hon_ars" placeholder="0"></div>
+    <div class="fgrp" style="grid-column:1/-1;background:rgba(79,156,249,.06);border:1px solid rgba(79,156,249,.2);border-radius:7px;padding:11px">
+      <div style="font-size:10px;color:var(--acc);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Referencia de Facturación</div>
+      <div class="fg" style="gap:9px">
+        <div class="fgrp"><label class="flbl">Importe de Referencia</label><input type="number" class="fc" id="ex-importe_ref" placeholder="0"></div>
+        <div class="fgrp"><label class="flbl">Moneda</label><select class="fc" id="ex-moneda_ref"><option>USD</option><option>ARS</option></select></div>
+        <div class="fgrp"><label class="flbl">Fecha Estimada de Cobro</label><input type="date" class="fc" id="ex-f_cobro_est"></div>
+      </div>
+    </div>
     <div class="fgrp fsp"><label class="flbl">Notas</label><textarea class="fc" id="ex-notas" rows="2"></textarea></div>
   </div></div>
   <div class="mf"><button class="btn bg2" onclick="cM('m-ex')">Cancelar</button><button class="btn bp" onclick="gEx()">💾 Guardar</button></div>
