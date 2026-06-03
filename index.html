@@ -85,11 +85,20 @@ textarea.fc{resize:vertical;min-height:52px}
 .cbox{grid-column:1/-1;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:7px;padding:10px;display:none}
 .cboxt{font-size:10px;color:var(--org);font-weight:600;margin-bottom:7px;text-transform:uppercase}
 .fsp{grid-column:1/-1}
+
+.ecomex-logo{display:flex;align-items:center;gap:10px}
+.ecomex-lines{display:flex;flex-direction:column;gap:4px;flex-shrink:0}
+.ecomex-lines i{display:block;height:3px;border-radius:2px;background:linear-gradient(90deg,#4f9cf9,#a8d4ff);font-style:normal}
+.ecomex-lines i:nth-child(1){width:22px}
+.ecomex-lines i:nth-child(2){width:16px;opacity:.75}
+.ecomex-lines i:nth-child(3){width:10px;opacity:.45}
+.ecomex-name{font-size:17px;font-weight:800;color:#e8eaf0;letter-spacing:1px;line-height:1.1}
+.ecomex-sub{font-size:10px;color:#4f9cf9;font-family:var(--fm);text-transform:uppercase;letter-spacing:1.5px;margin-top:1px}
 </style>
 </head>
 <body>
 <div id="sb">
-  <div class="sbl"><h1>GestiónComex</h1><span>Sistema Administrativo</span></div>
+  <div class="sbl"><div class="ecomex-logo"><div class="ecomex-lines"><i></i><i></i><i></i></div><div><div class="ecomex-name">E-COMEX</div><div class="ecomex-sub">Gestión</div></div></div></div>
   <div class="sbs"><div class="sbh">Principal</div>
     <button class="ni on" onclick="goTo('dash')"><span class="ic">📊</span>Dashboard</button></div>
   <div class="sbs"><div class="sbh">Operaciones</div>
@@ -124,7 +133,7 @@ textarea.fc{resize:vertical;min-height:52px}
 // ═══ DATA ═══════════════════════════════════
 const KEYS=['tipos_gasto','proveedores','clientes','operaciones','facturas_prov','facturas_emit','pagos','cobranzas','tipo_cambio'];
 let D={},editIdx=-1,editTabla='',curPage='dash';
-function load(){KEYS.forEach(k=>{const v=localStorage.getItem('gc_'+k);D[k]=v?JSON.parse(v):[];});if(!KEYS.some(k=>D[k].length>0))initDemo();$('st').textContent='Sistema listo';}
+function load(){KEYS.forEach(k=>{try{const v=localStorage.getItem('gc_'+k);D[k]=v?JSON.parse(v):[];}catch(e){D[k]=[];}});if(!KEYS.some(k=>D[k].length>0))initDemo();$('st').textContent='Sistema listo';}
 function save(k){localStorage.setItem('gc_'+k,JSON.stringify(D[k]));}
 function nid(arr){if(!arr.length)return 1;return Math.max(...arr.map(r=>parseInt(r.id||0)))+1;}
 
@@ -524,7 +533,7 @@ function rXport(pg){
   pg.innerHTML=`<div class="card" style="margin-bottom:14px"><div class="ch"><span class="cn">📤 Exportar a Excel</span></div><div class="cb">
     <p style="color:var(--tx2);font-size:12px;margin-bottom:14px">Exportá todos los datos en un archivo Excel con filtros automáticos, columnas bien organizadas y listo para analizar.</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
-      ${[['📊','Exportar Todo','Todas las tablas','xTodo()'],['📦','Expedientes','Operaciones','xT("operaciones")'],['🧾','Fact. Proveedores','Con detalle IVA','xT("facturas_prov")'],['📄','Fact. Emitidas','Facturas al cliente','xT("facturas_emit")'],['💸','Pagos','Registro de pagos','xT("pagos")'],['💰','Cobranzas','Registro de cobros','xT("cobranzas")'],['🏭','Proveedores','Maestro','xT("proveedores")'],['👥','Clientes','Maestro','xT("clientes")'],['📉','Rentabilidad','Análisis por operación','xRent()']].map(([ic,t,d,fn])=>
+      ${[['📊','Exportar Todo','Todas las tablas','xTodo()'],['📦','Expedientes','Operaciones','xT('operaciones')'],['🧾','Fact. Proveedores','Con detalle IVA','xT('facturas_prov')'],['📄','Fact. Emitidas','Facturas al cliente','xT('facturas_emit')'],['💸','Pagos','Registro de pagos','xT('pagos')'],['💰','Cobranzas','Registro de cobros','xT('cobranzas')'],['🏭','Proveedores','Maestro','xT('proveedores')'],['👥','Clientes','Maestro','xT('clientes')'],['📉','Rentabilidad','Análisis por operación','xRent()']].map(([ic,t,d,fn])=>
         `<div class="card" style="cursor:pointer;margin-bottom:0" onclick="${fn}"><div class="cb" style="text-align:center;padding:16px">
           <div style="font-size:26px;margin-bottom:6px">${ic}</div>
           <div style="font-weight:600;font-size:12px">${t}</div>
@@ -727,7 +736,7 @@ function gTC(){
 
 // ═══ INIT ════════════════════════════════════
 load();
-render('dash');
+try{render('dash');}catch(e){console.error('render error:',e);$('pgc').innerHTML='<div style="padding:20px;color:var(--red)">Error al cargar: '+e.message+'</div>';}
 </script>
 
 <!-- MODAL DETALLE EXPEDIENTE -->
