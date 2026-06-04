@@ -100,7 +100,8 @@ textarea.fc{resize:vertical;min-height:52px}
     <button class="ni" onclick="goTo('pagos')"><span class="ic">💸</span>Pagos</button>
     <button class="ni" onclick="goTo('cobs')"><span class="ic">💰</span>Cobranzas</button>
     <button class="ni" onclick="goTo('cheqs')"><span class="ic">🏦</span>Cheques Pendientes</button>
-    <button class="ni" onclick="goTo('cashf')"><span class="ic">📈</span>Cash Flow</button></div>
+    <button class="ni" onclick="goTo('cashf')"><span class="ic">📈</span>Cash Flow</button>
+    <button class="ni" onclick="goTo('balance')"><span class="ic">📅</span>Balance Mensual</button></div>
   <div class="sbs"><div class="sbh">Maestros</div>
     <button class="ni" onclick="goTo('provs')"><span class="ic">🏭</span>Proveedores</button>
     <button class="ni" onclick="goTo('clis')"><span class="ic">👥</span>Clientes</button>
@@ -220,9 +221,9 @@ function oM(id){
 document.addEventListener('click',e=>{if(e.target.classList.contains('mo'))e.target.classList.remove('show');});
 
 // ═══ NAV ═════════════════════════════════════
-const PGS={dash:'Dashboard',exps:'Expedientes',fprov:'Facturas Proveedores',femit:'Facturas Emitidas',pagos:'Pagos',cobs:'Cobranzas',cheqs:'Cheques Pendientes',cashf:'Cash Flow',provs:'Proveedores',clis:'Clientes',tgas:'Tipos de Gasto',tc:'Tipo de Cambio',rent:'Rentabilidad',ccprov:'CC Proveedores',cccli:'CC Clientes',xport:'Exportar / Importar'};
+const PGS={dash:'Dashboard',exps:'Expedientes',fprov:'Facturas Proveedores',femit:'Facturas Emitidas',pagos:'Pagos',cobs:'Cobranzas',cheqs:'Cheques Pendientes',cashf:'Cash Flow',balance:'Balance Mensual',provs:'Proveedores',clis:'Clientes',tgas:'Tipos de Gasto',tc:'Tipo de Cambio',rent:'Rentabilidad',ccprov:'CC Proveedores',cccli:'CC Clientes',xport:'Exportar / Importar'};
 function goTo(page){curPage=page;document.querySelectorAll('.ni').forEach(n=>n.classList.toggle('on',n.getAttribute('onclick').includes("'"+page+"'")));$('pgt').textContent=PGS[page]||page;$('tba').innerHTML='';render(page);}
-function render(page){const pg=$('pgc'),ac=$('tba');const fn={dash:rDash,exps:rExps,fprov:rFProv,femit:rFEmit,pagos:rPagos,cobs:rCobs,cheqs:rCheqs,cashf:rCashF,provs:rProvs,clis:rClis,tgas:rTgas,tc:rTC,rent:rRent,ccprov:rCCProv,cccli:rCCCli,xport:rXport};if(fn[page])fn[page](pg,ac);}
+function render(page){const pg=$('pgc'),ac=$('tba');const fn={dash:rDash,exps:rExps,fprov:rFProv,femit:rFEmit,pagos:rPagos,cobs:rCobs,cheqs:rCheqs,cashf:rCashF,balance:rBalance,provs:rProvs,clis:rClis,tgas:rTgas,tc:rTC,rent:rRent,ccprov:rCCProv,cccli:rCCCli,xport:rXport};if(fn[page])fn[page](pg,ac);}
 
 // ═══ TABLE + STAT HELPERS ════════════════════
 function tbl(h,rows,msg='Sin registros'){if(!rows.length)return`<div class="es"><div class="ei">📭</div><p>${msg}</p></div>`;return`<div class="tw"><table><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;}
@@ -402,6 +403,123 @@ function rCheqs(pg){
       <div class="card"><div class="ch"><span class="cn">🔴 Cheques Emitidos</span></div><div class="cb">${tbl(ths,mkRow(chqP,'p'),'Sin cheques emitidos pendientes')}</div></div>
       <div class="card"><div class="ch"><span class="cn">🟢 Cheques a Cobrar</span></div><div class="cb">${tbl(ths,mkRow(chqC,'c'),'Sin cheques a cobrar pendientes')}</div></div>
     </div>`;
+}
+
+
+function rBalance(pg,ac){
+  // Selector de mes inicial
+  const hoy=new Date();
+  const defStart=localStorage.getItem('gc_balance_start')||(hoy.getFullYear()+'-04');
+  ac.innerHTML=`<label style="font-size:12px;color:var(--tx2)">Desde:</label>
+    <input type="month" class="fc" id="bal-start" value="${defStart}" style="width:auto" onchange="localStorage.setItem('gc_balance_start',this.value);rBalanceData()">
+    <button class="btn bg2 bs" onclick="xBalance()">⬇️ Exportar</button>`;
+  pg.innerHTML=`<div class="al ali">📅 Proyección de 6 meses. <b>A Pagar:</b> facturas de proveedores impagas por mes de vencimiento. <b>A Cobrar:</b> facturas emitidas pendientes (por vencimiento) + cobranzas estimadas sin factura (por fecha estimada). Montos en ARS.</div>
+    <div id="bal-stats"></div>
+    <div class="card"><div class="ch"><span class="cn" id="bal-title">Balance Mensual Proyectado</span></div><div class="cb" id="bal-data"></div></div>`;
+  rBalanceData();
+}
+
+function balanceMeses(){
+  // Devuelve array de 6 meses {key:'2025-04', label:'Abril 2025'} desde el mes seleccionado
+  const start=v('bal-start')||(new Date().getFullYear()+'-04');
+  const [y,m]=start.split('-').map(Number);
+  const nombres=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const meses=[];
+  for(let i=0;i<6;i++){
+    const d=new Date(y,m-1+i,1);
+    const yy=d.getFullYear(),mm=d.getMonth();
+    meses.push({key:yy+'-'+String(mm+1).padStart(2,'0'),label:nombres[mm]+' '+yy});
+  }
+  return meses;
+}
+
+function mesDe(fecha){ return fecha?fecha.slice(0,7):''; }
+
+function rBalanceData(){
+  const meses=balanceMeses();
+  const tcRef=lTC();
+  const facturadas=new Set(D.facturas_emit.map(f=>f.op_id));
+
+  // Construir datos por mes
+  const filas=meses.map(mes=>{
+    // A PAGAR: facturas proveedores impagas con vencimiento en este mes
+    const pagar=D.facturas_prov.filter(f=>f.ep==='PENDIENTE'&&mesDe(f.fv)===mes.key)
+      .reduce((a,f)=>a+(f.tars||0),0);
+
+    // A COBRAR con factura: facturas emitidas pendientes con vencimiento en este mes
+    const cobrarFac=D.facturas_emit.filter(f=>f.ec==='PENDIENTE'&&mesDe(f.fv)===mes.key)
+      .reduce((a,f)=>a+(f.tars||0),0);
+
+    // A COBRAR estimado: operaciones con importe_ref, SIN factura, con fecha est. en este mes
+    const cobrarEst=D.operaciones.filter(o=>(o.importe_ref||0)>0&&!facturadas.has(o.id)
+      &&o.estado!=='CERRADA'&&o.estado!=='CANCELADA'&&mesDe(o.f_cobro_est)===mes.key)
+      .reduce((a,o)=>a+(o.moneda_ref==='USD'?(o.importe_ref*tcRef):(o.importe_ref||0)),0);
+
+    const cobrar=cobrarFac+cobrarEst;
+    return {...mes,pagar,cobrarFac,cobrarEst,cobrar,neto:cobrar-pagar};
+  });
+
+  // Saldo acumulado
+  let acum=0;
+  filas.forEach(f=>{acum+=f.neto;f.acum=acum;});
+
+  // Totales
+  const totPagar=filas.reduce((a,f)=>a+f.pagar,0);
+  const totCobrar=filas.reduce((a,f)=>a+f.cobrar,0);
+  const totNeto=totCobrar-totPagar;
+
+  if($('bal-stats'))$('bal-stats').innerHTML=sg([
+    {l:'Total a Pagar (6m)',v:'$ '+fN(totPagar),c:'og'},
+    {l:'Total a Cobrar (6m)',v:'$ '+fN(totCobrar),c:'gn'},
+    {l:'Saldo Neto (6m)',v:'$ '+fN(totNeto),c:totNeto>=0?'gn':'pu'},
+    {l:'Saldo Final Acum.',v:'$ '+fN(acum),c:acum>=0?'bl':'pu'},
+  ]);
+
+  if($('bal-title'))$('bal-title').textContent='Balance Mensual — '+meses[0].label+' a '+meses[5].label;
+
+  const rows=filas.map(f=>[
+    `<span class="tdm">${f.label}</span>`,
+    `<span class="tdc rn">$ ${fN(f.pagar)}</span>`,
+    `<span class="tdc rp">$ ${fN(f.cobrarFac)}</span>`,
+    f.cobrarEst>0?`<span class="tdc" style="color:var(--org)">$ ${fN(f.cobrarEst)}</span>`:`<span class="tdc" style="color:var(--tx3)">—</span>`,
+    `<span class="tdc rp">$ ${fN(f.cobrar)}</span>`,
+    `<span class="tdc ${f.neto>=0?'rp':'rn'}">$ ${fN(f.neto)}</span>`,
+    `<span class="tdc ${f.acum>=0?'rp':'rn'}" style="font-weight:700">$ ${fN(f.acum)}</span>`
+  ]);
+
+  // Fila de totales
+  rows.push([
+    '<span style="font-weight:700">TOTALES</span>',
+    `<span class="tdc rn" style="font-weight:700">$ ${fN(totPagar)}</span>`,
+    `<span class="tdc rp" style="font-weight:700">$ ${fN(filas.reduce((a,f)=>a+f.cobrarFac,0))}</span>`,
+    `<span class="tdc" style="font-weight:700;color:var(--org)">$ ${fN(filas.reduce((a,f)=>a+f.cobrarEst,0))}</span>`,
+    `<span class="tdc rp" style="font-weight:700">$ ${fN(totCobrar)}</span>`,
+    `<span class="tdc ${totNeto>=0?'rp':'rn'}" style="font-weight:700">$ ${fN(totNeto)}</span>`,
+    `<span class="tdc" style="font-weight:700">—</span>`
+  ]);
+
+  if($('bal-data'))$('bal-data').innerHTML=tbl(
+    ['Mes','A Pagar','Cobrar c/Factura','Cobrar Estimado','Total a Cobrar','Saldo Neto','Saldo Acumulado'],
+    rows,'Sin datos en el período'
+  );
+}
+
+function xBalance(){
+  const meses=balanceMeses();
+  const tcRef=lTC();
+  const facturadas=new Set(D.facturas_emit.map(f=>f.op_id));
+  let acum=0;
+  const rows=meses.map(mes=>{
+    const pagar=D.facturas_prov.filter(f=>f.ep==='PENDIENTE'&&mesDe(f.fv)===mes.key).reduce((a,f)=>a+(f.tars||0),0);
+    const cobrarFac=D.facturas_emit.filter(f=>f.ec==='PENDIENTE'&&mesDe(f.fv)===mes.key).reduce((a,f)=>a+(f.tars||0),0);
+    const cobrarEst=D.operaciones.filter(o=>(o.importe_ref||0)>0&&!facturadas.has(o.id)&&o.estado!=='CERRADA'&&o.estado!=='CANCELADA'&&mesDe(o.f_cobro_est)===mes.key).reduce((a,o)=>a+(o.moneda_ref==='USD'?(o.importe_ref*tcRef):(o.importe_ref||0)),0);
+    const cobrar=cobrarFac+cobrarEst,neto=cobrar-pagar;acum+=neto;
+    return [mes.label,pagar,cobrarFac,cobrarEst,cobrar,neto,acum];
+  });
+  const wb=XLSX.utils.book_new();
+  mkWS(wb,'Balance Mensual',['Mes','A Pagar','Cobrar c/Factura','Cobrar Estimado','Total a Cobrar','Saldo Neto','Saldo Acumulado'],rows);
+  XLSX.writeFile(wb,'GestionComex_BalanceMensual_'+hoy()+'.xlsx');
+  toast('Balance exportado ✓');
 }
 
 function rCashF(pg){
