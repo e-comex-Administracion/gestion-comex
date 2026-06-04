@@ -100,8 +100,7 @@ textarea.fc{resize:vertical;min-height:52px}
     <button class="ni" onclick="goTo('pagos')"><span class="ic">💸</span>Pagos</button>
     <button class="ni" onclick="goTo('cobs')"><span class="ic">💰</span>Cobranzas</button>
     <button class="ni" onclick="goTo('cheqs')"><span class="ic">🏦</span>Cheques Pendientes</button>
-    <button class="ni" onclick="goTo('cashf')"><span class="ic">📈</span>Cash Flow</button>
-    <button class="ni" onclick="goTo('balance')"><span class="ic">📅</span>Balance Mensual</button></div>
+    <button class="ni" onclick="goTo('cashf')"><span class="ic">📈</span>Cash Flow</button></div>
   <div class="sbs"><div class="sbh">Maestros</div>
     <button class="ni" onclick="goTo('provs')"><span class="ic">🏭</span>Proveedores</button>
     <button class="ni" onclick="goTo('clis')"><span class="ic">👥</span>Clientes</button>
@@ -204,6 +203,9 @@ function initDemo(){
 function $(i){return document.getElementById(i);}
 function v(i){return $(i)?$(i).value:'';}
 function fN(n){const x=parseFloat(n)||0;if(!x&&x!==0)return'-';return new Intl.NumberFormat('es-AR',{minimumFractionDigits:0,maximumFractionDigits:0}).format(x);}
+function fF(fecha){if(!fecha)return'-';const p=String(fecha).split('-');if(p.length!==3)return fecha;return p[2]+'/'+p[1]+'/'+p[0];}
+function mesDe(fecha){return fecha?String(fecha).slice(0,7):'';}
+function mesLabel(key){if(!key||key==='sin')return'SIN FECHA';const[y,m]=key.split('-').map(Number);const n=['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];return(n[m-1]||'?')+' '+y;}
 function fU(n){const x=parseFloat(n)||0;return x?'USD '+fN(x):'-';}
 function lTC(){if(!D.tipo_cambio.length)return 1;return parseFloat(D.tipo_cambio[D.tipo_cambio.length-1].ref)||1;}
 function eB(e){const m={PAGADA:'bgg',COBRADA:'bgg',CERRADA:'bgg',SI:'bgg',PENDIENTE:'bgo','EN CURSO':'bgb','EN TRAMITE':'bgb',NO:'bgr',CANCELADA:'bgr',VENCIDA:'bgr'};return`<span class="bg ${m[e]||'bgp'}">${e||'-'}</span>`;}
@@ -221,9 +223,9 @@ function oM(id){
 document.addEventListener('click',e=>{if(e.target.classList.contains('mo'))e.target.classList.remove('show');});
 
 // ═══ NAV ═════════════════════════════════════
-const PGS={dash:'Dashboard',exps:'Expedientes',fprov:'Facturas Proveedores',femit:'Facturas Emitidas',pagos:'Pagos',cobs:'Cobranzas',cheqs:'Cheques Pendientes',cashf:'Cash Flow',balance:'Balance Mensual',provs:'Proveedores',clis:'Clientes',tgas:'Tipos de Gasto',tc:'Tipo de Cambio',rent:'Rentabilidad',ccprov:'CC Proveedores',cccli:'CC Clientes',xport:'Exportar / Importar'};
+const PGS={dash:'Dashboard',exps:'Expedientes',fprov:'Facturas Proveedores',femit:'Facturas Emitidas',pagos:'Pagos',cobs:'Cobranzas',cheqs:'Cheques Pendientes',cashf:'Cash Flow',provs:'Proveedores',clis:'Clientes',tgas:'Tipos de Gasto',tc:'Tipo de Cambio',rent:'Rentabilidad',ccprov:'CC Proveedores',cccli:'CC Clientes',xport:'Exportar / Importar'};
 function goTo(page){curPage=page;document.querySelectorAll('.ni').forEach(n=>n.classList.toggle('on',n.getAttribute('onclick').includes("'"+page+"'")));$('pgt').textContent=PGS[page]||page;$('tba').innerHTML='';render(page);}
-function render(page){const pg=$('pgc'),ac=$('tba');const fn={dash:rDash,exps:rExps,fprov:rFProv,femit:rFEmit,pagos:rPagos,cobs:rCobs,cheqs:rCheqs,cashf:rCashF,balance:rBalance,provs:rProvs,clis:rClis,tgas:rTgas,tc:rTC,rent:rRent,ccprov:rCCProv,cccli:rCCCli,xport:rXport};if(fn[page])fn[page](pg,ac);}
+function render(page){const pg=$('pgc'),ac=$('tba');const fn={dash:rDash,exps:rExps,fprov:rFProv,femit:rFEmit,pagos:rPagos,cobs:rCobs,cheqs:rCheqs,cashf:rCashF,provs:rProvs,clis:rClis,tgas:rTgas,tc:rTC,rent:rRent,ccprov:rCCProv,cccli:rCCCli,xport:rXport};if(fn[page])fn[page](pg,ac);}
 
 // ═══ TABLE + STAT HELPERS ════════════════════
 function tbl(h,rows,msg='Sin registros'){if(!rows.length)return`<div class="es"><div class="ei">📭</div><p>${msg}</p></div>`;return`<div class="tw"><table><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;}
@@ -279,11 +281,11 @@ function rDash(pg){
   ])+`<div class="gr2">
     <div class="card"><div class="ch"><span class="cn">Operaciones Activas</span></div><div class="cb">
       ${tbl(['Expediente','Cliente','Estado','Apertura'],oa.map(o=>[
-        `<span class="tdc" style="color:var(--acc)">${o.exp}</span>`,o.cliente,eB(o.estado),o.f_ap||'-'
+        `<span class="tdc" style="color:var(--acc)">${o.exp}</span>`,o.cliente,eB(o.estado),fF(o.f_ap)
       ]),'Sin operaciones activas')}</div></div>
     <div class="card"><div class="ch"><span class="cn">Facturas Pendientes de Pago</span></div><div class="cb">
       ${tbl(['Proveedor','Vence','Total','Estado'],pp.map(f=>[
-        `<span class="tdm">${f.prov}</span>`,`<span class="tdc">${f.fv}</span>`,`<span class="tdc">$ ${fN(f.tars)}</span>`,eB(f.ep)
+        `<span class="tdm">${f.prov}</span>`,`<span class="tdc">${fF(f.fv)}</span>`,`<span class="tdc">$ ${fN(f.tars)}</span>`,eB(f.ep)
       ]),'Sin facturas pendientes')}</div></div>
   </div>`;
 }
@@ -294,9 +296,9 @@ function rExps(pg,ac){
     ${tbl(['Expediente','Cliente','Mercadería','País','Apertura','Cierre','TC','Imp. Referencia','F. Est. Cobro','Estado','Acciones'],
       D.operaciones.map((o,i)=>[
         `<span class="tdc" style="color:var(--acc);cursor:pointer" onclick="vExp(${i})" title="Ver detalle">${o.exp} 🔍</span>`,
-        `<span class="tdm">${o.cliente}</span>`,o.merc.substring(0,28)+'...',o.pais,o.f_ap||'-',o.f_cl||'-',`$ ${fN(o.tc)}`,
+        `<span class="tdm">${o.cliente}</span>`,o.merc.substring(0,28)+'...',o.pais,fF(o.f_ap),fF(o.f_cl),`$ ${fN(o.tc)}`,
         o.importe_ref?`<span class="tdc rp">${o.moneda_ref==='USD'?fU(o.importe_ref):'$ '+fN(o.importe_ref)}</span>`:'—',
-        o.f_cobro_est||'—',eB(o.estado),ac2('operaciones',i)
+        o.f_cobro_est?fF(o.f_cobro_est):'—',eB(o.estado),ac2('operaciones',i)
       ]))}</div></div>`;
 }
 
@@ -310,7 +312,7 @@ function vExp(idx){
   const rc=res>=0?'var(--grn)':'var(--red)',rbg=res>=0?'rgba(34,197,94,.08)':'rgba(239,68,68,.08)',rbr=res>=0?'rgba(34,197,94,.2)':'rgba(239,68,68,.2)';
   let h=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px">`;
   const refStr=o.importe_ref?(o.moneda_ref==='USD'?fU(o.importe_ref):'$ '+fN(o.importe_ref)):'-';
-  [['Cliente',o.cliente],['Estado',eB(o.estado)],['País',o.pais],['TC','$ '+fN(o.tc)],['Apertura',o.f_ap||'-'],['Cierre',o.f_cl||'—'],['Imp. Referencia',`<span class="rp">${refStr}</span>`],['F. Est. Cobro',o.f_cobro_est||'-']].forEach(([l,val])=>{
+  [['Cliente',o.cliente],['Estado',eB(o.estado)],['País',o.pais],['TC','$ '+fN(o.tc)],['Apertura',fF(o.f_ap)],['Cierre',o.f_cl?fF(o.f_cl):'—'],['Imp. Referencia',`<span class="rp">${refStr}</span>`],['F. Est. Cobro',o.f_cobro_est?fF(o.f_cobro_est):'-']].forEach(([l,val])=>{
     h+=`<div style="background:var(--s2);border-radius:6px;padding:8px"><div style="font-size:9px;color:var(--tx3);text-transform:uppercase">${l}</div><div style="font-weight:600;margin-top:2px;font-size:12px">${val}</div></div>`;
   });
   h+=`</div><div style="background:var(--s2);border-radius:6px;padding:8px;margin-bottom:12px;font-size:11px"><b>Mercadería:</b> ${o.merc} | <b>Tipo:</b> ${o.tipo}</div>`;
@@ -324,7 +326,7 @@ function vExp(idx){
   if(!fps.length){h+=`<div class="es" style="padding:12px"><p>Sin facturas cargadas</p></div>`;}
   else{
     h+=`<div class="tw" style="margin-bottom:12px"><table><thead><tr>${['Proveedor','Tipo Gasto','Fecha','Moneda','Importe','ARS','Estado'].map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>
-      ${fps.map(f=>`<tr><td class="tdm">${f.prov}</td><td>${f.tg}</td><td class="tdc">${f.fe}</td><td>${f.mon}</td>
+      ${fps.map(f=>`<tr><td class="tdm">${f.prov}</td><td>${f.tg}</td><td class="tdc">${fF(f.fe)}</td><td>${f.mon}</td>
         <td class="tdc">${f.mon==='USD'?fU(f.tusd):'$ '+fN(f.total)}</td><td class="tdc rn">$ ${fN(f.tars)}</td><td>${eB(f.ep)}</td></tr>`).join('')}
       <tr style="background:var(--s2)"><td colspan="5" style="font-weight:600">TOTAL GASTOS</td><td class="tdc rn">$ ${fN(tgA)}</td><td></td></tr>
       </tbody></table></div>`;
@@ -332,7 +334,7 @@ function vExp(idx){
   h+=`<div style="font-weight:600;font-size:12px;margin-bottom:6px;color:var(--tx2)">FACTURA EMITIDA (${fes.length})</div>`;
   if(!fes.length){h+=`<div style="padding:10px;text-align:center;color:var(--org);background:rgba(245,158,11,.06);border:1px dashed rgba(245,158,11,.3);border-radius:6px">Operación sin facturar</div>`;}
   else{h+=`<div class="tw"><table><thead><tr>${['Nro. ARCA','Fecha','Concepto','USD','ARS','Estado'].map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>
-    ${fes.map(f=>`<tr><td class="tdc" style="color:var(--acc)">${f.nro}</td><td class="tdc">${f.fe}</td><td>${f.concepto.substring(0,35)}...</td>
+    ${fes.map(f=>`<tr><td class="tdc" style="color:var(--acc)">${f.nro}</td><td class="tdc">${fF(f.fe)}</td><td>${f.concepto.substring(0,35)}...</td>
       <td class="tdc rp">${fU(f.tusd)}</td><td class="tdc rp">$ ${fN(f.tars)}</td><td>${eB(f.ec)}</td></tr>`).join('')}
     </tbody></table></div>`;}
   $('m-exp-body').innerHTML=h;
@@ -345,7 +347,7 @@ function rFProv(pg,ac){
   pg.innerHTML=`<div class="card"><div class="ch"><span class="cn">Facturas de Proveedores</span></div><div class="cb">
     ${tbl(['Fecha','Vence','Proveedor','Nro. Factura','Tipo Gasto','Total ARS','Moneda','Asignación','Operación','Estado','Acciones'],
       D.facturas_prov.map((f,i)=>[
-        `<span class="tdc">${f.fe}</span>`,`<span class="tdc">${f.fv}</span>`,`<span class="tdm">${f.prov}</span>`,
+        `<span class="tdc">${fF(f.fe)}</span>`,`<span class="tdc">${fF(f.fv)}</span>`,`<span class="tdm">${f.prov}</span>`,
         `<span class="tdc" style="font-size:10px">${f.nro}</span>`,f.tg,`<span class="tdc">$ ${fN(f.tars)}</span>`,f.mon,
         `<span class="bg ${f.asig==='OPERACION'?'bgb':'bgp'}">${f.asig}</span>`,f.op||'-',eB(f.ep),ac2('facturas_prov',i)
       ]))}</div></div>`;
@@ -357,7 +359,7 @@ function rFEmit(pg,ac){
     <div class="al ali">📌 Solo registro informativo. La factura se emite en ARCA.</div>
     ${tbl(['Fecha','Vence','Cliente','Nro. ARCA','Operación','Concepto','Total ARS','Total USD','Estado','Acciones'],
       D.facturas_emit.map((f,i)=>[
-        `<span class="tdc">${f.fe}</span>`,`<span class="tdc">${f.fv}</span>`,`<span class="tdm">${f.cliente}</span>`,
+        `<span class="tdc">${fF(f.fe)}</span>`,`<span class="tdc">${fF(f.fv)}</span>`,`<span class="tdm">${f.cliente}</span>`,
         `<span class="tdc" style="font-size:10px">${f.nro}</span>`,f.op||'-',f.concepto.substring(0,30)+'...',
         `<span class="tdc rp">$ ${fN(f.tars)}</span>`,fU(f.tusd),eB(f.ec),ac2('facturas_emit',i)
       ]))}</div></div>`;
@@ -368,7 +370,7 @@ function rPagos(pg,ac){
   pg.innerHTML=`<div class="card"><div class="ch"><span class="cn">Registro de Pagos</span></div><div class="cb">
     ${tbl(['Fecha','Proveedor','Factura','Forma de Pago','Banco','Referencia','Monto ARS','Monto USD','Acciones'],
       D.pagos.map((p,i)=>[
-        `<span class="tdc">${p.fp}</span>`,`<span class="tdm">${p.prov}</span>`,
+        `<span class="tdc">${fF(p.fp)}</span>`,`<span class="tdm">${p.prov}</span>`,
         `<span class="tdc" style="font-size:10px">${p.nro_f||'-'}</span>`,p.forma,p.banco||'-',
         `<span class="tdc">${p.ref||'-'}</span>`,`<span class="tdc">$ ${fN(p.mars)}</span>`,fU(p.musd),ac2('pagos',i)
       ]))}</div></div>`;
@@ -379,7 +381,7 @@ function rCobs(pg,ac){
   pg.innerHTML=`<div class="card"><div class="ch"><span class="cn">Registro de Cobranzas</span></div><div class="cb">
     ${tbl(['Fecha','Cliente','Factura ARCA','Forma de Cobro','Banco','Monto ARS','Monto USD','Acciones'],
       D.cobranzas.map((c,i)=>[
-        `<span class="tdc">${c.fc}</span>`,`<span class="tdm">${c.cliente}</span>`,
+        `<span class="tdc">${fF(c.fc)}</span>`,`<span class="tdm">${c.cliente}</span>`,
         `<span class="tdc" style="font-size:10px">${c.nro_a||'-'}</span>`,c.forma,c.banco||'-',
         `<span class="tdc rp">$ ${fN(c.mars)}</span>`,fU(c.musd),ac2('cobranzas',i)
       ]))}</div></div>`;
@@ -406,150 +408,67 @@ function rCheqs(pg){
 }
 
 
-function rBalance(pg,ac){
-  // Selector de mes inicial
-  const hoy=new Date();
-  const defStart=localStorage.getItem('gc_balance_start')||(hoy.getFullYear()+'-04');
-  ac.innerHTML=`<label style="font-size:12px;color:var(--tx2)">Desde:</label>
-    <input type="month" class="fc" id="bal-start" value="${defStart}" style="width:auto" onchange="localStorage.setItem('gc_balance_start',this.value);rBalanceData()">
-    <button class="btn bg2 bs" onclick="xBalance()">⬇️ Exportar</button>`;
-  pg.innerHTML=`<div class="al ali">📅 Proyección de 6 meses. <b>A Pagar:</b> facturas de proveedores impagas por mes de vencimiento. <b>A Cobrar:</b> facturas emitidas pendientes (por vencimiento) + cobranzas estimadas sin factura (por fecha estimada). Montos en ARS.</div>
-    <div id="bal-stats"></div>
-    <div class="card"><div class="ch"><span class="cn" id="bal-title">Balance Mensual Proyectado</span></div><div class="cb" id="bal-data"></div></div>`;
-  rBalanceData();
-}
-
-function balanceMeses(){
-  // Devuelve array de 6 meses {key:'2025-04', label:'Abril 2025'} desde el mes seleccionado
-  const start=v('bal-start')||(new Date().getFullYear()+'-04');
-  const [y,m]=start.split('-').map(Number);
-  const nombres=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  const meses=[];
-  for(let i=0;i<6;i++){
-    const d=new Date(y,m-1+i,1);
-    const yy=d.getFullYear(),mm=d.getMonth();
-    meses.push({key:yy+'-'+String(mm+1).padStart(2,'0'),label:nombres[mm]+' '+yy});
-  }
-  return meses;
-}
-
-function mesDe(fecha){ return fecha?fecha.slice(0,7):''; }
-
-function rBalanceData(){
-  const meses=balanceMeses();
-  const tcRef=lTC();
-  const facturadas=new Set(D.facturas_emit.map(f=>f.op_id));
-
-  // Construir datos por mes
-  const filas=meses.map(mes=>{
-    // A PAGAR: facturas proveedores impagas con vencimiento en este mes
-    const pagar=D.facturas_prov.filter(f=>f.ep==='PENDIENTE'&&mesDe(f.fv)===mes.key)
-      .reduce((a,f)=>a+(f.tars||0),0);
-
-    // A COBRAR con factura: facturas emitidas pendientes con vencimiento en este mes
-    const cobrarFac=D.facturas_emit.filter(f=>f.ec==='PENDIENTE'&&mesDe(f.fv)===mes.key)
-      .reduce((a,f)=>a+(f.tars||0),0);
-
-    // A COBRAR estimado: operaciones con importe_ref, SIN factura, con fecha est. en este mes
-    const cobrarEst=D.operaciones.filter(o=>(o.importe_ref||0)>0&&!facturadas.has(o.id)
-      &&o.estado!=='CERRADA'&&o.estado!=='CANCELADA'&&mesDe(o.f_cobro_est)===mes.key)
-      .reduce((a,o)=>a+(o.moneda_ref==='USD'?(o.importe_ref*tcRef):(o.importe_ref||0)),0);
-
-    const cobrar=cobrarFac+cobrarEst;
-    return {...mes,pagar,cobrarFac,cobrarEst,cobrar,neto:cobrar-pagar};
-  });
-
-  // Saldo acumulado
-  let acum=0;
-  filas.forEach(f=>{acum+=f.neto;f.acum=acum;});
-
-  // Totales
-  const totPagar=filas.reduce((a,f)=>a+f.pagar,0);
-  const totCobrar=filas.reduce((a,f)=>a+f.cobrar,0);
-  const totNeto=totCobrar-totPagar;
-
-  if($('bal-stats'))$('bal-stats').innerHTML=sg([
-    {l:'Total a Pagar (6m)',v:'$ '+fN(totPagar),c:'og'},
-    {l:'Total a Cobrar (6m)',v:'$ '+fN(totCobrar),c:'gn'},
-    {l:'Saldo Neto (6m)',v:'$ '+fN(totNeto),c:totNeto>=0?'gn':'pu'},
-    {l:'Saldo Final Acum.',v:'$ '+fN(acum),c:acum>=0?'bl':'pu'},
-  ]);
-
-  if($('bal-title'))$('bal-title').textContent='Balance Mensual — '+meses[0].label+' a '+meses[5].label;
-
-  const rows=filas.map(f=>[
-    `<span class="tdm">${f.label}</span>`,
-    `<span class="tdc rn">$ ${fN(f.pagar)}</span>`,
-    `<span class="tdc rp">$ ${fN(f.cobrarFac)}</span>`,
-    f.cobrarEst>0?`<span class="tdc" style="color:var(--org)">$ ${fN(f.cobrarEst)}</span>`:`<span class="tdc" style="color:var(--tx3)">—</span>`,
-    `<span class="tdc rp">$ ${fN(f.cobrar)}</span>`,
-    `<span class="tdc ${f.neto>=0?'rp':'rn'}">$ ${fN(f.neto)}</span>`,
-    `<span class="tdc ${f.acum>=0?'rp':'rn'}" style="font-weight:700">$ ${fN(f.acum)}</span>`
-  ]);
-
-  // Fila de totales
-  rows.push([
-    '<span style="font-weight:700">TOTALES</span>',
-    `<span class="tdc rn" style="font-weight:700">$ ${fN(totPagar)}</span>`,
-    `<span class="tdc rp" style="font-weight:700">$ ${fN(filas.reduce((a,f)=>a+f.cobrarFac,0))}</span>`,
-    `<span class="tdc" style="font-weight:700;color:var(--org)">$ ${fN(filas.reduce((a,f)=>a+f.cobrarEst,0))}</span>`,
-    `<span class="tdc rp" style="font-weight:700">$ ${fN(totCobrar)}</span>`,
-    `<span class="tdc ${totNeto>=0?'rp':'rn'}" style="font-weight:700">$ ${fN(totNeto)}</span>`,
-    `<span class="tdc" style="font-weight:700">—</span>`
-  ]);
-
-  if($('bal-data'))$('bal-data').innerHTML=tbl(
-    ['Mes','A Pagar','Cobrar c/Factura','Cobrar Estimado','Total a Cobrar','Saldo Neto','Saldo Acumulado'],
-    rows,'Sin datos en el período'
-  );
-}
-
-function xBalance(){
-  const meses=balanceMeses();
-  const tcRef=lTC();
-  const facturadas=new Set(D.facturas_emit.map(f=>f.op_id));
-  let acum=0;
-  const rows=meses.map(mes=>{
-    const pagar=D.facturas_prov.filter(f=>f.ep==='PENDIENTE'&&mesDe(f.fv)===mes.key).reduce((a,f)=>a+(f.tars||0),0);
-    const cobrarFac=D.facturas_emit.filter(f=>f.ec==='PENDIENTE'&&mesDe(f.fv)===mes.key).reduce((a,f)=>a+(f.tars||0),0);
-    const cobrarEst=D.operaciones.filter(o=>(o.importe_ref||0)>0&&!facturadas.has(o.id)&&o.estado!=='CERRADA'&&o.estado!=='CANCELADA'&&mesDe(o.f_cobro_est)===mes.key).reduce((a,o)=>a+(o.moneda_ref==='USD'?(o.importe_ref*tcRef):(o.importe_ref||0)),0);
-    const cobrar=cobrarFac+cobrarEst,neto=cobrar-pagar;acum+=neto;
-    return [mes.label,pagar,cobrarFac,cobrarEst,cobrar,neto,acum];
-  });
-  const wb=XLSX.utils.book_new();
-  mkWS(wb,'Balance Mensual',['Mes','A Pagar','Cobrar c/Factura','Cobrar Estimado','Total a Cobrar','Saldo Neto','Saldo Acumulado'],rows);
-  XLSX.writeFile(wb,'GestionComex_BalanceMensual_'+hoy()+'.xlsx');
-  toast('Balance exportado ✓');
-}
-
 function rCashF(pg){
   const pp=D.facturas_prov.filter(f=>f.ep==='PENDIENTE');
   const pc=D.facturas_emit.filter(f=>f.ec==='PENDIENTE');
   const facturadas=new Set(D.facturas_emit.map(f=>f.op_id));
-  const est=D.operaciones.filter(o=>(o.importe_ref||0)>0&&o.estado!=='CERRADA'&&o.estado!=='CANCELADA');
-  const estSinFac=est.filter(o=>!facturadas.has(o.id));
+  const estSinFac=D.operaciones.filter(o=>(o.importe_ref||0)>0&&!facturadas.has(o.id)&&o.estado!=='CERRADA'&&o.estado!=='CANCELADA');
+  const tcRef=lTC();
   const tP=pp.reduce((a,f)=>a+(f.tars||0),0);
   const tC=pc.reduce((a,f)=>a+(f.tars||0),0);
-  const tcRef=lTC();
   const tEst=estSinFac.reduce((a,o)=>a+((o.moneda_ref==='USD'?(o.importe_ref*tcRef):(o.importe_ref||0))),0);
   const totC=D.cobranzas.reduce((a,c)=>a+(c.mars||0),0),totP=D.pagos.reduce((a,p)=>a+(p.mars||0),0);
+
+  // Lista unificada de cobranzas pendientes: facturadas (SI) + estimadas (NO)
+  const cobranzasPend=[
+    ...pc.map(f=>({nombre:f.cliente,ref:f.nro,fecha:f.fv,monto:f.tars||0,facturado:'SI'})),
+    ...estSinFac.map(o=>({nombre:o.cliente,ref:o.exp,fecha:o.f_cobro_est,monto:(o.moneda_ref==='USD'?(o.importe_ref*tcRef):(o.importe_ref||0)),facturado:'NO'}))
+  ];
+
   pg.innerHTML=sg([
     {l:'Por Pagar',v:'$ '+fN(tP),s:pp.length+' facturas',c:'og'},
     {l:'Cobrar c/Factura',v:'$ '+fN(tC),s:pc.length+' pendientes',c:'gn'},
-    {l:'Cobrar s/Factura (est.)',v:'$ '+fN(tEst),s:estSinFac.length+' ops estimadas',c:'bl'},
-    {l:'Total Cobrado',v:'$ '+fN(totC),s:'Pagado: $ '+fN(totP),c:'pu'},
+    {l:'Cobrar s/Factura (est.)',v:'$ '+fN(tEst),s:estSinFac.length+' estimadas',c:'bl'},
+    {l:'Cobrado / Pagado',v:'$ '+fN(totC),s:'Pagado: $ '+fN(totP),c:'pu'},
   ])+`<div class="gr2">
     <div class="card"><div class="ch"><span class="cn">Vencimientos de Pago</span></div><div class="cb">
-      ${tbl(['Proveedor','Vence','Total','Estado'],pp.sort((a,b)=>a.fv>b.fv?1:-1).map(f=>[`<span class="tdm">${f.prov}</span>`,`<span class="tdc">${f.fv}</span>`,`<span class="tdc rn">$ ${fN(f.tars)}</span>`,eB(f.ep)]),'Sin vencimientos')}</div></div>
-    <div class="card"><div class="ch"><span class="cn">Cobranzas con Factura</span></div><div class="cb">
-      ${tbl(['Cliente','Nro. Factura','Vence','ARS','USD','Estado'],pc.sort((a,b)=>a.fv>b.fv?1:-1).map(f=>[`<span class="tdm">${f.cliente}</span>`,`<span class="tdc" style="font-size:10px">${f.nro}</span>`,`<span class="tdc">${f.fv}</span>`,`<span class="tdc rp">$ ${fN(f.tars)}</span>`,fU(f.tusd),eB(f.ec)]),'Sin facturas pendientes de cobro')}</div></div>
-  </div>
-  <div class="card"><div class="ch"><span class="cn">Cobranzas Estimadas (sin factura)</span><span style="font-size:11px;color:var(--tx3);margin-left:8px">Desde importe de referencia del expediente</span></div><div class="cb">
-    ${tbl(['Expediente','Cliente','Importe Referencia','F. Est. Cobro','Estado'],
-      estSinFac.sort((a,b)=>(a.f_cobro_est||'9999')>(b.f_cobro_est||'9999')?1:-1).map(o=>{
-        const iRef=o.moneda_ref==='USD'?fU(o.importe_ref):'$ '+fN(o.importe_ref);
-        return [`<span class="tdc" style="color:var(--acc)">${o.exp}</span>`,`<span class="tdm">${o.cliente}</span>`,`<span class="tdc rp">${iRef}</span>`,o.f_cobro_est?`<span class="tdc">${o.f_cobro_est}</span>`:'<span style="color:var(--org)">Sin fecha</span>',eB(o.estado)];
-      }),'Sin cobranzas estimadas — ingresá importe de referencia en el expediente')}</div></div>`;
+      ${tblMensual(
+        ['Proveedor','Vence','Total','Estado'],
+        pp, f=>f.fv,
+        f=>[`<span class="tdm">${f.prov}</span>`,`<span class="tdc">${fF(f.fv)}</span>`,`<span class="tdc rn">$ ${fN(f.tars)}</span>`,eB(f.ep)],
+        f=>f.tars||0, 'rn', 'Sin vencimientos pendientes'
+      )}</div></div>
+    <div class="card"><div class="ch"><span class="cn">Cobranzas Pendientes</span></div><div class="cb">
+      ${tblMensual(
+        ['Cliente','Factura/Exp','Vence','Total','Facturado'],
+        cobranzasPend, c=>c.fecha,
+        c=>[`<span class="tdm">${c.nombre}</span>`,`<span class="tdc" style="font-size:10px">${c.ref}</span>`,`<span class="tdc">${fF(c.fecha)}</span>`,`<span class="tdc rp">$ ${fN(c.monto)}</span>`,c.facturado==='SI'?'<span class="bg bgg">SI</span>':'<span class="bg bgo">NO</span>'],
+        c=>c.monto||0, 'rp', 'Sin cobranzas pendientes'
+      )}</div></div>
+  </div>`;
+}
+
+// Tabla agrupada por mes con subtotales
+function tblMensual(headers,items,dateFn,rowFn,amountFn,totalClass,msg){
+  if(!items.length)return`<div class="es"><div class="ei">📭</div><p>${msg}</p></div>`;
+  const grupos={};
+  items.forEach(it=>{const k=mesDe(dateFn(it))||'sin';if(!grupos[k])grupos[k]=[];grupos[k].push(it);});
+  const keys=Object.keys(grupos).sort((a,b)=>a==='sin'?1:b==='sin'?-1:(a>b?1:-1));
+  const nCols=headers.length;
+  let body='';
+  let granTotal=0;
+  keys.forEach(k=>{
+    body+=`<tr style="background:var(--s2)"><td colspan="${nCols}" style="font-weight:700;color:var(--acc);font-size:11px;letter-spacing:.5px">${mesLabel(k)}</td></tr>`;
+    let subtotal=0;
+    grupos[k].sort((a,b)=>(dateFn(a)||'')>(dateFn(b)||'')?1:-1).forEach(it=>{
+      body+=`<tr>${rowFn(it).map(c=>`<td>${c}</td>`).join('')}</tr>`;
+      subtotal+=amountFn(it);
+    });
+    granTotal+=subtotal;
+    body+=`<tr style="background:rgba(255,255,255,.02)"><td colspan="${nCols-2}" style="text-align:right;font-size:11px;color:var(--tx3)">Total ${mesLabel(k)}:</td><td class="tdc ${totalClass}" style="font-weight:700">$ ${fN(subtotal)}</td><td></td></tr>`;
+  });
+  body+=`<tr style="background:var(--s2);border-top:2px solid var(--br)"><td colspan="${nCols-2}" style="text-align:right;font-weight:700">TOTAL GENERAL:</td><td class="tdc ${totalClass}" style="font-weight:700">$ ${fN(granTotal)}</td><td></td></tr>`;
+  return`<div class="tw"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 function rProvs(pg,ac){
@@ -581,7 +500,7 @@ function rTC(pg,ac){
   pg.innerHTML=`<div class="al ali" style="margin-bottom:14px">💱 <b>¿Para qué sirve?</b> Registrá el TC antes de cargar facturas en USD. Se usa automáticamente para convertir a ARS.</div>
     <div class="card"><div class="ch"><span class="cn">Registro de Tipo de Cambio</span></div><div class="cb">
     ${tbl(['Fecha','TC Oficial','TC MEP','TC Referencia','Fuente','Notas','Acciones'],
-      D.tipo_cambio.map((t,i)=>[`<span class="tdc tdm">${t.fecha}</span>`,`<span class="tdc">$ ${fN(t.of)}</span>`,`<span class="tdc">$ ${fN(t.mep)}</span>`,`<span class="tdc">$ ${fN(t.ref)}</span>`,t.fuente,t.notas||'-',ac2('tipo_cambio',i)])
+      D.tipo_cambio.map((t,i)=>[`<span class="tdc tdm">${fF(t.fecha)}</span>`,`<span class="tdc">$ ${fN(t.of)}</span>`,`<span class="tdc">$ ${fN(t.mep)}</span>`,`<span class="tdc">$ ${fN(t.ref)}</span>`,t.fuente,t.notas||'-',ac2('tipo_cambio',i)])
     )}</div></div>`;
 }
 function tcR(){const of=prompt('TC Oficial BCRA hoy:','');if(!of||isNaN(parseFloat(of)))return;const mp=prompt('TC MEP (Enter = igual):',of)||of;const r={id:nid(D.tipo_cambio),fecha:new Date().toISOString().slice(0,10),of:parseFloat(of),mep:parseFloat(mp),ref:parseFloat(of),fuente:'BCRA',notas:'Carga rápida'};D.tipo_cambio.push(r);save('tipo_cambio');toast('TC guardado: $ '+of+' ✓');render('tc');}
@@ -625,7 +544,7 @@ function rCCPD(){
   if($('ccps'))$('ccps').innerHTML=sg([{l:'Facturas',v:fps.length,s:'$ '+fN(tF),c:'bl'},{l:'Pagado',v:'$ '+fN(tP),c:'gn'},{l:'Pendiente',v:'$ '+fN(tPd),c:'og'},{l:'Saldo',v:'$ '+fN(tF-tP),c:tF-tP<=0?'gn':'pu'}]);
   if($('ccpt'))$('ccpt').textContent=fp?'CC — '+fp:'CC Proveedores';
   fps.sort((a,b)=>a.fe>b.fe?1:-1);let saldo=0;
-  const rows=fps.map(f=>{if(f.ep==='PENDIENTE')saldo+=(f.tars||0);return[`<span class="tdc">${f.fe}</span>`,`<span class="tdc">${f.fv}</span>`,`<span class="tdm">${f.prov}</span>`,`<span class="tdc" style="font-size:10px">${f.nro}</span>`,f.tg,`<span class="bg ${f.asig==='OPERACION'?'bgb':'bgp'}">${f.asig}</span>`,f.op||'-',`<span class="tdc rn">$ ${fN(f.tars)}</span>`,eB(f.ep),`<span class="tdc ${saldo>0?'rn':'rp'}">$ ${fN(saldo)}</span>`];});
+  const rows=fps.map(f=>{if(f.ep==='PENDIENTE')saldo+=(f.tars||0);return[`<span class="tdc">${fF(f.fe)}</span>`,`<span class="tdc">${fF(f.fv)}</span>`,`<span class="tdm">${f.prov}</span>`,`<span class="tdc" style="font-size:10px">${f.nro}</span>`,f.tg,`<span class="bg ${f.asig==='OPERACION'?'bgb':'bgp'}">${f.asig}</span>`,f.op||'-',`<span class="tdc rn">$ ${fN(f.tars)}</span>`,eB(f.ep),`<span class="tdc ${saldo>0?'rn':'rp'}">$ ${fN(saldo)}</span>`];});
   if($('ccpd'))$('ccpd').innerHTML=tbl(['Fecha','Vence','Proveedor','Nro. Factura','Tipo Gasto','Asignación','Operación','Importe','Estado','Saldo Acum.'],rows,'Sin registros');
 }
 
@@ -653,7 +572,7 @@ function rCCCD(){
   if($('cccs'))$('cccs').innerHTML=sg([{l:'Facturas',v:fes.length,s:'$ '+fN(tF),c:'bl'},{l:'Cobrado',v:'$ '+fN(tC),c:'gn'},{l:'Por Cobrar',v:'$ '+fN(tPd),c:'og'},{l:'USD Total',v:fU(fes.reduce((a,f)=>a+(f.tusd||0),0)),c:'pu'}]);
   if($('ccct'))$('ccct').textContent=fc?'CC — '+fc:'CC Clientes';
   fes.sort((a,b)=>a.fe>b.fe?1:-1);let saldo=0;
-  const rows=fes.map(f=>{if(f.ec==='PENDIENTE')saldo+=(f.tars||0);return[`<span class="tdc">${f.fe}</span>`,`<span class="tdc">${f.fv}</span>`,`<span class="tdm">${f.cliente}</span>`,`<span class="tdc" style="font-size:10px">${f.nro}</span>`,f.op||'-',f.concepto.substring(0,28)+'...',`<span class="tdc rp">$ ${fN(f.tars)}</span>`,fU(f.tusd),eB(f.ec),`<span class="tdc ${saldo>0?'rn':'rp'}">$ ${fN(saldo)}</span>`];});
+  const rows=fes.map(f=>{if(f.ec==='PENDIENTE')saldo+=(f.tars||0);return[`<span class="tdc">${fF(f.fe)}</span>`,`<span class="tdc">${fF(f.fv)}</span>`,`<span class="tdm">${f.cliente}</span>`,`<span class="tdc" style="font-size:10px">${f.nro}</span>`,f.op||'-',f.concepto.substring(0,28)+'...',`<span class="tdc rp">$ ${fN(f.tars)}</span>`,fU(f.tusd),eB(f.ec),`<span class="tdc ${saldo>0?'rn':'rp'}">$ ${fN(saldo)}</span>`];});
   if($('cccd'))$('cccd').innerHTML=tbl(['Fecha','Vence','Cliente','Nro. ARCA','Operación','Concepto','Total ARS','Total USD','Estado','Saldo Acum.'],rows,'Sin registros');
 }
 
