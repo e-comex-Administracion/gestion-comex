@@ -208,6 +208,14 @@ function mesDe(fecha){return fecha?String(fecha).slice(0,7):'';}
 function mesLabel(key){if(!key||key==='sin')return'SIN FECHA';const[y,m]=key.split('-').map(Number);const n=['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];return(n[m-1]||'?')+' '+y;}
 function fU(n){const x=parseFloat(n)||0;return x?'USD '+fN(x):'-';}
 function lTC(){if(!D.tipo_cambio.length)return 1;return parseFloat(D.tipo_cambio[D.tipo_cambio.length-1].ref)||1;}
+function rentExp(o){
+  const gastos=D.facturas_prov.filter(f=>f.op_id===o.id).reduce((a,f)=>a+(f.tars||0),0);
+  const facs=D.facturas_emit.filter(f=>f.op_id===o.id);
+  let base;
+  if(facs.length){base=facs.reduce((a,f)=>a+(f.tars||0),0);}
+  else{base=(o.importe_ref||0)>0?(o.moneda_ref==='USD'?(o.importe_ref*(o.tc||lTC())):o.importe_ref):0;}
+  return base-gastos;
+}
 function eB(e){const m={PAGADA:'bgg',COBRADA:'bgg',CERRADA:'bgg',SI:'bgg',PENDIENTE:'bgo','EN CURSO':'bgb','EN TRAMITE':'bgb',NO:'bgr',CANCELADA:'bgr',VENCIDA:'bgr'};return`<span class="bg ${m[e]||'bgp'}">${e||'-'}</span>`;}
 function toast(msg,t='ok'){const el=$('toast');el.textContent=msg;el.className='show '+t;setTimeout(()=>el.className='',3000);}
 function cM(id){$(id).classList.remove('show');}
@@ -293,11 +301,12 @@ function rDash(pg){
 function rExps(pg,ac){
   ac.innerHTML=`<button class="btn bp bs" onclick="oM('m-ex')">＋ Nueva Operación</button>`;
   pg.innerHTML=`<div class="card"><div class="ch"><span class="cn">Expedientes de Importación</span></div><div class="cb">
-    ${tbl(['Expediente','Cliente','Mercadería','País','Apertura','Cierre','TC','Imp. Referencia','F. Est. Cobro','Estado','Acciones'],
+    ${tbl(['Expediente','Cliente','Mercadería','Apertura','Cierre','TC','Imp. Referencia','Rentab. Actual','F. Est. Cobro','Estado','Acciones'],
       D.operaciones.map((o,i)=>[
         `<span class="tdc" style="color:var(--acc);cursor:pointer" onclick="vExp(${i})" title="Ver detalle">${o.exp} 🔍</span>`,
-        `<span class="tdm">${o.cliente}</span>`,o.merc.substring(0,28)+'...',o.pais,fF(o.f_ap),fF(o.f_cl),`$ ${fN(o.tc)}`,
+        `<span class="tdm">${o.cliente}</span>`,o.merc.substring(0,28)+'...',fF(o.f_ap),fF(o.f_cl),`$ ${fN(o.tc)}`,
         o.importe_ref?`<span class="tdc rp">${o.moneda_ref==='USD'?fU(o.importe_ref):'$ '+fN(o.importe_ref)}</span>`:'—',
+        (()=>{const r=rentExp(o);return `<span class="tdc ${r>=0?'rp':'rn'}" style="font-weight:700">$ ${fN(r)}</span>`;})(),
         o.f_cobro_est?fF(o.f_cobro_est):'—',eB(o.estado),ac2('operaciones',i)
       ]))}</div></div>`;
 }
@@ -729,7 +738,7 @@ function gFP(){
   if(editIdx>=0)D.facturas_prov[editIdx]=datos;else D.facturas_prov.push(datos);
   save('facturas_prov');editIdx=-1;cM('m-fp');
   if(ep==='PAGADA'&&confirm('Factura guardada como PAGADA.\n\n¿Registrás el pago ahora?')){
-    setTimeout(()=>{editIdx=-1;oFP('pg-fac',datos.id,false);oPv('pg-pv',pvId);if($('pg-mars'))$('pg-mars').value=tars.toFixed(2);if($('pg-musd'))$('pg-musd').value=tusd.toFixed(2);if($('pg-mon'))$('pg-mon').value=mon;oM('m-pg');},300);
+    setTimeout(()=>{editIdx=-1;oM('m-pg');oFP('pg-fac',datos.id,false);oPv('pg-pv',pvId);if($('pg-mars'))$('pg-mars').value=tars.toFixed(2);if($('pg-musd'))$('pg-musd').value=tusd.toFixed(2);if($('pg-mon'))$('pg-mon').value=mon;},300);
   }else{toast('Factura guardada ✓');}
   render('fprov');
 }
@@ -746,7 +755,7 @@ function gFE(){
   if(editIdx>=0)D.facturas_emit[editIdx]=datosE;else D.facturas_emit.push(datosE);
   save('facturas_emit');editIdx=-1;cM('m-fe');
   if(ec==='COBRADA'&&confirm('Factura registrada como COBRADA.\n\n¿Registrás la cobranza ahora?')){
-    setTimeout(()=>{editIdx=-1;oFE('cb-fac',datosE.id,false);oCl('cb-cl',cliId);if($('cb-mars'))$('cb-mars').value=tars.toFixed(2);if($('cb-musd'))$('cb-musd').value=tusd.toFixed(2);if($('cb-mon'))$('cb-mon').value=mon;oM('m-cb');},300);
+    setTimeout(()=>{editIdx=-1;oM('m-cb');oFE('cb-fac',datosE.id,false);oCl('cb-cl',cliId);if($('cb-mars'))$('cb-mars').value=tars.toFixed(2);if($('cb-musd'))$('cb-musd').value=tusd.toFixed(2);if($('cb-mon'))$('cb-mon').value=mon;},300);
   }else{toast('Factura registrada ✓');}
   render('femit');
 }
@@ -839,8 +848,8 @@ render('dash');
     <div class="fgrp"><label class="flbl">Cliente *</label><select class="fc" id="ex-cl"></select></div>
     <div class="fgrp fsp"><label class="flbl">Descripción Mercadería</label><input class="fc" id="ex-merc" placeholder="Descripción del producto importado"></div>
     <div class="fgrp"><label class="flbl">País de Origen</label><input class="fc" id="ex-pais" placeholder="China"></div>
-    <div class="fgrp"><label class="flbl">Tipo de Importación</label>
-      <select class="fc" id="ex-tipo"><option>Importación Definitiva para Consumo</option><option>Importación Temporaria</option><option>Importación en Consignación</option><option>ATA Carnet</option></select></div>
+    <div class="fgrp"><label class="flbl">Tipo de Operación</label>
+      <select class="fc" id="ex-tipo"><option>Importación Definitiva para Consumo</option><option>Importación Temporaria</option><option>Importación en Consignación</option><option>ATA Carnet</option><option>Servicios</option></select></div>
     <div class="fgrp"><label class="flbl">Fecha Apertura</label><input type="date" class="fc" id="ex-f_ap"></div>
     <div class="fgrp"><label class="flbl">Fecha Cierre</label><input type="date" class="fc" id="ex-f_cl"></div>
     <div class="fgrp"><label class="flbl">Estado</label><select class="fc" id="ex-estado"><option>EN TRAMITE</option><option>EN CURSO</option><option>CERRADA</option><option>CANCELADA</option></select></div>
