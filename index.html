@@ -212,8 +212,13 @@ function rentExp(o){
   const gastos=D.facturas_prov.filter(f=>f.op_id===o.id).reduce((a,f)=>a+(f.tars||0),0);
   const facs=D.facturas_emit.filter(f=>f.op_id===o.id);
   let base;
-  if(facs.length){base=facs.reduce((a,f)=>a+(f.tars||0),0);}
-  else{base=(o.importe_ref||0)>0?(o.moneda_ref==='USD'?(o.importe_ref*(o.tc||lTC())):o.importe_ref):0;}
+  if(facs.length){
+    // Facturado menos reintegros (gastos a cuenta del cliente, neutros)
+    base=facs.reduce((a,f)=>{
+      const reintARS=(f.reint||0)*(f.mon==='USD'?(f.tc_v||lTC()):1);
+      return a+(f.tars||0)-reintARS;
+    },0);
+  }else{base=(o.importe_ref||0)>0?(o.moneda_ref==='USD'?(o.importe_ref*(o.tc||lTC())):o.importe_ref):0;}
   return base-gastos;
 }
 function eB(e){const m={PAGADA:'bgg',COBRADA:'bgg',CERRADA:'bgg',SI:'bgg',PENDIENTE:'bgo','EN CURSO':'bgb','EN TRAMITE':'bgb',NO:'bgr',CANCELADA:'bgr',VENCIDA:'bgr'};return`<span class="bg ${m[e]||'bgp'}">${e||'-'}</span>`;}
@@ -304,7 +309,7 @@ function rExps(pg,ac){
     ${tbl(['Expediente','Cliente','Mercadería','Apertura','Cierre','TC','Imp. Referencia','Rentab. Actual','F. Est. Cobro','Estado','Acciones'],
       D.operaciones.map((o,i)=>[
         `<span class="tdc" style="color:var(--acc);cursor:pointer" onclick="vExp(${i})" title="Ver detalle">${o.exp} 🔍</span>`,
-        `<span class="tdm">${o.cliente}</span>`,o.merc.substring(0,28)+'...',fF(o.f_ap),fF(o.f_cl),`$ ${fN(o.tc)}`,
+        `<span class="tdm">${o.cliente}</span>`,(o.merc||"").substring(0,28)+'...',fF(o.f_ap),fF(o.f_cl),`$ ${fN(o.tc)}`,
         o.importe_ref?`<span class="tdc rp">${o.moneda_ref==='USD'?fU(o.importe_ref):'$ '+fN(o.importe_ref)}</span>`:'—',
         (()=>{const r=rentExp(o);return `<span class="tdc ${r>=0?'rp':'rn'}" style="font-weight:700">$ ${fN(r)}</span>`;})(),
         o.f_cobro_est?fF(o.f_cobro_est):'—',eB(o.estado),ac2('operaciones',i)
@@ -317,7 +322,9 @@ function vExp(idx){
   const fes=D.facturas_emit.filter(f=>f.op_id===o.id);
   const tgA=fps.reduce((a,f)=>a+(f.tars||0),0),tgU=fps.reduce((a,f)=>a+(f.tusd||0),0);
   const tfA=fes.reduce((a,f)=>a+(f.tars||0),0),tfU=fes.reduce((a,f)=>a+(f.tusd||0),0);
-  const res=tfA-tgA,marg=tfA>0?(res/tfA*100).toFixed(1):0;
+  const tReint=fes.reduce((a,f)=>a+((f.reint||0)*(f.mon==='USD'?(f.tc_v||lTC()):1)),0);
+  const tfaNeto=tfA-tReint;
+  const res=tfaNeto-tgA,marg=tfaNeto>0?(res/tfaNeto*100).toFixed(1):0;
   const rc=res>=0?'var(--grn)':'var(--red)',rbg=res>=0?'rgba(34,197,94,.08)':'rgba(239,68,68,.08)',rbr=res>=0?'rgba(34,197,94,.2)':'rgba(239,68,68,.2)';
   let h=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px">`;
   const refStr=o.importe_ref?(o.moneda_ref==='USD'?fU(o.importe_ref):'$ '+fN(o.importe_ref)):'-';
@@ -327,8 +334,8 @@ function vExp(idx){
   h+=`</div><div style="background:var(--s2);border-radius:6px;padding:8px;margin-bottom:12px;font-size:11px"><b>Mercadería:</b> ${o.merc} | <b>Tipo:</b> ${o.tipo}</div>`;
   h+=`<div style="background:${rbg};border:1px solid ${rbr};border-radius:8px;padding:12px;margin-bottom:12px">
     <div style="font-weight:700;font-size:12px;margin-bottom:8px;color:${rc}">RESUMEN DE RENTABILIDAD</div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
-      ${[['Facturado','$ '+fN(tfA)+' / '+fU(tfU),'var(--grn)'],['Gastos','$ '+fN(tgA)+' / '+fU(tgU),'var(--red)'],['Resultado','$ '+fN(res),rc],['Margen',marg+'%',rc]].map(([l,val,c])=>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">
+      ${[['Facturado','$ '+fN(tfA),'var(--grn)'],['Reintegros','$ '+fN(tReint),'var(--org)'],['Gastos','$ '+fN(tgA),'var(--red)'],['Resultado','$ '+fN(res),rc],['Margen',marg+'%',rc]].map(([l,val,c])=>
         `<div><div style="font-size:9px;color:var(--tx3);text-transform:uppercase">${l}</div><div style="font-size:14px;font-weight:700;color:${c}">${val}</div></div>`).join('')}
     </div></div>`;
   h+=`<div style="font-weight:600;font-size:12px;margin-bottom:6px;color:var(--tx2)">FACTURAS DE PROVEEDORES (${fps.length})</div>`;
@@ -343,7 +350,7 @@ function vExp(idx){
   h+=`<div style="font-weight:600;font-size:12px;margin-bottom:6px;color:var(--tx2)">FACTURA EMITIDA (${fes.length})</div>`;
   if(!fes.length){h+=`<div style="padding:10px;text-align:center;color:var(--org);background:rgba(245,158,11,.06);border:1px dashed rgba(245,158,11,.3);border-radius:6px">Operación sin facturar</div>`;}
   else{h+=`<div class="tw"><table><thead><tr>${['Nro. ARCA','Fecha','Concepto','USD','ARS','Estado'].map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>
-    ${fes.map(f=>`<tr><td class="tdc" style="color:var(--acc)">${f.nro}</td><td class="tdc">${fF(f.fe)}</td><td>${f.concepto.substring(0,35)}...</td>
+    ${fes.map(f=>`<tr><td class="tdc" style="color:var(--acc)">${f.nro}</td><td class="tdc">${fF(f.fe)}</td><td>${(f.concepto||"").substring(0,35)}...</td>
       <td class="tdc rp">${fU(f.tusd)}</td><td class="tdc rp">$ ${fN(f.tars)}</td><td>${eB(f.ec)}</td></tr>`).join('')}
     </tbody></table></div>`;}
   $('m-exp-body').innerHTML=h;
@@ -369,7 +376,7 @@ function rFEmit(pg,ac){
     ${tbl(['Fecha','Vence','Cliente','Nro. ARCA','Operación','Concepto','Total ARS','Total USD','Estado','Acciones'],
       D.facturas_emit.map((f,i)=>[
         `<span class="tdc">${fF(f.fe)}</span>`,`<span class="tdc">${fF(f.fv)}</span>`,`<span class="tdm">${f.cliente}</span>`,
-        `<span class="tdc" style="font-size:10px">${f.nro}</span>`,f.op||'-',f.concepto.substring(0,30)+'...',
+        `<span class="tdc" style="font-size:10px">${f.nro}</span>`,f.op||'-',(f.concepto||"").substring(0,30)+'...',
         `<span class="tdc rp">$ ${fN(f.tars)}</span>`,fU(f.tusd),eB(f.ec),ac2('facturas_emit',i)
       ]))}</div></div>`;
 }
@@ -581,7 +588,7 @@ function rCCCD(){
   if($('cccs'))$('cccs').innerHTML=sg([{l:'Facturas',v:fes.length,s:'$ '+fN(tF),c:'bl'},{l:'Cobrado',v:'$ '+fN(tC),c:'gn'},{l:'Por Cobrar',v:'$ '+fN(tPd),c:'og'},{l:'USD Total',v:fU(fes.reduce((a,f)=>a+(f.tusd||0),0)),c:'pu'}]);
   if($('ccct'))$('ccct').textContent=fc?'CC — '+fc:'CC Clientes';
   fes.sort((a,b)=>a.fe>b.fe?1:-1);let saldo=0;
-  const rows=fes.map(f=>{if(f.ec==='PENDIENTE')saldo+=(f.tars||0);return[`<span class="tdc">${fF(f.fe)}</span>`,`<span class="tdc">${fF(f.fv)}</span>`,`<span class="tdm">${f.cliente}</span>`,`<span class="tdc" style="font-size:10px">${f.nro}</span>`,f.op||'-',f.concepto.substring(0,28)+'...',`<span class="tdc rp">$ ${fN(f.tars)}</span>`,fU(f.tusd),eB(f.ec),`<span class="tdc ${saldo>0?'rn':'rp'}">$ ${fN(saldo)}</span>`];});
+  const rows=fes.map(f=>{if(f.ec==='PENDIENTE')saldo+=(f.tars||0);return[`<span class="tdc">${fF(f.fe)}</span>`,`<span class="tdc">${fF(f.fv)}</span>`,`<span class="tdm">${f.cliente}</span>`,`<span class="tdc" style="font-size:10px">${f.nro}</span>`,f.op||'-',(f.concepto||"").substring(0,28)+'...',`<span class="tdc rp">$ ${fN(f.tars)}</span>`,fU(f.tusd),eB(f.ec),`<span class="tdc ${saldo>0?'rn':'rp'}">$ ${fN(saldo)}</span>`];});
   if($('cccd'))$('cccd').innerHTML=tbl(['Fecha','Vence','Cliente','Nro. ARCA','Operación','Concepto','Total ARS','Total USD','Estado','Saldo Acum.'],rows,'Sin registros');
 }
 
@@ -620,7 +627,7 @@ function mkWS(wb,nom,headers,rows){
 
 function _xOps(wb){mkWS(wb,'Expedientes',['Expediente','Cliente','País','Tipo Importación','Fecha Apertura','Fecha Cierre','Estado','TC','Hon. USD','Hon. ARS','Importe Referencia','Moneda Ref.','Fecha Est. Cobro','Notas'],D.operaciones.map(o=>[o.exp,o.cliente,o.pais,o.tipo,o.f_ap,o.f_cl||'',o.estado,o.tc||0,o.hon_usd||0,o.hon_ars||0,o.importe_ref||0,o.moneda_ref||'USD',o.f_cobro_est||'',o.notas||'']));}
 function _xFP(wb){mkWS(wb,'Facturas Proveedores',['Fecha Emisión','Fecha Vencimiento','Proveedor','Nro. Factura','Tipo Comp.','Tipo de Gasto','Neto 21%','IVA 21%','Neto 27%','IVA 27%','Neto 10.5%','IVA 10.5%','Neto 5%','IVA 5%','Neto Exento','Total IVA','Neto Total','Total','Moneda','Total ARS','Total USD','TC Usado','Asignación','Operación','Estado Pago','Notas'],D.facturas_prov.map(f=>[f.fe,f.fv,f.prov,f.nro,f.tipo_comp||f.tc,f.tg,f.n21||0,f.i21||0,f.n27||0,f.i27||0,f.n105||0,f.i105||0,f.n5||0,f.i5||0,f.n0||0,f.tiva||0,f.neto||0,f.total||0,f.mon,f.tars||0,f.tusd||0,f.tc_v||0,f.asig,f.op||'',f.ep,f.notas||'']));}
-function _xFE(wb){mkWS(wb,'Facturas Emitidas',['Fecha Emisión','Fecha Vencimiento','Cliente','Nro. ARCA','Tipo Comp.','Operación','Concepto','Neto 21%','IVA 21%','Neto 10.5%','IVA 10.5%','Neto Exento','Total IVA','Neto Total','Total ARS','Moneda','Total USD','TC','Estado Cobro','Notas'],D.facturas_emit.map(f=>[f.fe,f.fv,f.cliente,f.nro,f.tc,f.op||'',f.concepto,f.n21||0,f.i21||0,f.n105||0,f.i105||0,f.n0||0,f.tiva||0,f.neto||0,f.tars||0,f.mon,f.tusd||0,f.tc_v||0,f.ec,f.notas||'']));}
+function _xFE(wb){mkWS(wb,'Facturas Emitidas',['Fecha Emisión','Fecha Vencimiento','Cliente','Nro. ARCA','Tipo Comp.','Operación','Concepto','Neto 21%','IVA 21%','Neto 10.5%','IVA 10.5%','Neto Exento','Reintegro Gastos','Total IVA','Neto Total','Total ARS','Moneda','Total USD','TC','Estado Cobro','Notas'],D.facturas_emit.map(f=>[f.fe,f.fv,f.cliente,f.nro,f.tc,f.op||'',f.concepto,f.n21||0,f.i21||0,f.n105||0,f.i105||0,f.n0||0,f.reint||0,f.tiva||0,f.neto||0,f.tars||0,f.mon,f.tusd||0,f.tc_v||0,f.ec,f.notas||'']));}
 function _xPg(wb){mkWS(wb,'Pagos',['Fecha Pago','Proveedor','Nro. Factura','Forma de Pago','Banco','Referencia','Fecha Acreditación','Monto ARS','Monto USD','Moneda','Cheque Banco','Cheque Nro.','Cheque Fecha','Observaciones'],D.pagos.map(p=>[p.fp,p.prov,p.nro_f||'',p.forma,p.banco||'',p.ref||'',p.f_ac||'',p.mars||0,p.musd||0,p.mon,p.chqb||'',p.chqn||'',p.chqf||'',p.obs||'']));}
 function _xCb(wb){mkWS(wb,'Cobranzas',['Fecha Cobro','Cliente','Nro. ARCA','Forma de Cobro','Banco','Referencia','Fecha Acreditación','Monto ARS','Monto USD','Moneda','Cheque Banco','Cheque Nro.','Cheque Fecha','Observaciones'],D.cobranzas.map(c=>[c.fc,c.cliente,c.nro_a||'',c.forma,c.banco||'',c.ref||'',c.f_ac||'',c.mars||0,c.musd||0,c.mon,c.chqb||'',c.chqn||'',c.chqf||'',c.obs||'']));}
 function _xPvs(wb){mkWS(wb,'Proveedores',['Razón Social','CUIT','Condición IVA','Tipo de Gasto','Teléfono','Email','Condición Pago','Moneda','Activo','Notas'],D.proveedores.map(p=>[p.razon,p.cuit,p.iva,p.tg||'',p.tel||'',p.email||'',p.cpago||'',p.moneda,p.activo,p.notas||'']));}
@@ -666,7 +673,7 @@ function mapImp(k,r,i){
   const m={
     operaciones:r=>({id:i,exp:r['Expediente']||'',cliente:r['Cliente']||'',merc:r['Mercadería']||'',pais:r['País']||'',tipo:r['Tipo Importación']||'',f_ap:r['Fecha Apertura']||'',f_cl:r['Fecha Cierre']||'',estado:r['Estado']||'',tc:parseFloat(r['TC'])||0,hon_usd:parseFloat(r['Hon. USD'])||0,hon_ars:parseFloat(r['Hon. ARS'])||0,importe_ref:parseFloat(r['Importe Referencia'])||0,moneda_ref:r['Moneda Ref.']||'USD',f_cobro_est:r['Fecha Est. Cobro']||'',notas:r['Notas']||''}),
     facturas_prov:r=>({id:i,fe:r['Fecha Emisión']||'',fv:r['Fecha Vencimiento']||'',prov:r['Proveedor']||'',nro:r['Nro. Factura']||'',tc:r['Tipo Comp.']||'',tg:r['Tipo de Gasto']||'',n21:parseFloat(r['Neto 21%'])||0,i21:parseFloat(r['IVA 21%'])||0,n105:parseFloat(r['Neto 10.5%'])||0,i105:parseFloat(r['IVA 10.5%'])||0,n0:parseFloat(r['Neto Exento'])||0,tiva:parseFloat(r['Total IVA'])||0,neto:parseFloat(r['Neto Total'])||0,total:parseFloat(r['Total'])||0,mon:r['Moneda']||'ARS',tars:parseFloat(r['Total ARS'])||0,tusd:parseFloat(r['Total USD'])||0,tc_v:parseFloat(r['TC Usado'])||0,asig:r['Asignación']||'ESTRUCTURA',op:r['Operación']||'',ep:r['Estado Pago']||'PENDIENTE',notas:r['Notas']||''}),
-    facturas_emit:r=>({id:i,fe:r['Fecha Emisión']||'',fv:r['Fecha Vencimiento']||'',cliente:r['Cliente']||'',nro:r['Nro. ARCA']||'',tc:r['Tipo Comp.']||'',op:r['Operación']||'',concepto:r['Concepto']||'',n21:parseFloat(r['Neto 21%'])||0,i21:parseFloat(r['IVA 21%'])||0,n105:parseFloat(r['Neto 10.5%'])||0,i105:parseFloat(r['IVA 10.5%'])||0,n0:parseFloat(r['Neto Exento'])||0,tiva:parseFloat(r['Total IVA'])||0,neto:parseFloat(r['Neto Total'])||0,tars:parseFloat(r['Total ARS'])||0,mon:r['Moneda']||'USD',tusd:parseFloat(r['Total USD'])||0,tc_v:parseFloat(r['TC'])||0,ec:r['Estado Cobro']||'PENDIENTE',notas:r['Notas']||''}),
+    facturas_emit:r=>({id:i,fe:r['Fecha Emisión']||'',fv:r['Fecha Vencimiento']||'',cliente:r['Cliente']||'',nro:r['Nro. ARCA']||'',tc:r['Tipo Comp.']||'',op:r['Operación']||'',concepto:r['Concepto']||'',n21:parseFloat(r['Neto 21%'])||0,i21:parseFloat(r['IVA 21%'])||0,n105:parseFloat(r['Neto 10.5%'])||0,i105:parseFloat(r['IVA 10.5%'])||0,n0:parseFloat(r['Neto Exento'])||0,reint:parseFloat(r['Reintegro Gastos'])||0,tiva:parseFloat(r['Total IVA'])||0,neto:parseFloat(r['Neto Total'])||0,tars:parseFloat(r['Total ARS'])||0,mon:r['Moneda']||'USD',tusd:parseFloat(r['Total USD'])||0,tc_v:parseFloat(r['TC'])||0,ec:r['Estado Cobro']||'PENDIENTE',notas:r['Notas']||''}),
     pagos:r=>({id:i,fp:r['Fecha Pago']||'',prov:r['Proveedor']||'',nro_f:r['Nro. Factura']||'',forma:r['Forma de Pago']||'',banco:r['Banco']||'',ref:r['Referencia']||'',f_ac:r['Fecha Acreditación']||'',mars:parseFloat(r['Monto ARS'])||0,musd:parseFloat(r['Monto USD'])||0,mon:r['Moneda']||'ARS',chqb:r['Cheque Banco']||'',chqn:r['Cheque Nro.']||'',chqf:r['Cheque Fecha']||'',obs:r['Observaciones']||''}),
     cobranzas:r=>({id:i,fc:r['Fecha Cobro']||'',cliente:r['Cliente']||'',nro_a:r['Nro. ARCA']||'',forma:r['Forma de Cobro']||'',banco:r['Banco']||'',ref:r['Referencia']||'',f_ac:r['Fecha Acreditación']||'',mars:parseFloat(r['Monto ARS'])||0,musd:parseFloat(r['Monto USD'])||0,mon:r['Moneda']||'ARS',chqb:r['Cheque Banco']||'',chqn:r['Cheque Nro.']||'',chqf:r['Cheque Fecha']||'',obs:r['Observaciones']||''}),
     proveedores:r=>({id:i,razon:r['Razón Social']||'',cuit:r['CUIT']||'',iva:r['Condición IVA']||'',tg:r['Tipo de Gasto']||'',tel:r['Teléfono']||'',email:r['Email']||'',cpago:r['Condición Pago']||'',moneda:r['Moneda']||'ARS',activo:r['Activo']||'SI',notas:r['Notas']||''}),
@@ -699,7 +706,7 @@ function rstPv(r={}){editIdx=r.id?D.proveedores.findIndex(x=>x.id===r.id):-1;['r
 function rstCl(r={}){editIdx=r.id?D.clientes.findIndex(x=>x.id===r.id):-1;['razon','cuit','iva','contacto','tel','email','rubro','cpago','moneda','activo','notas'].forEach(f=>{const el=$('cl-'+f);if(el)el.value=r[f]||'';});}
 function rstEx(r={}){['exp','pais','tipo','f_ap','f_cl','estado','tc','hon_usd','hon_ars','importe_ref','f_cobro_est','notas'].forEach(f=>{const el=$('ex-'+f);if(el)el.value=r[f]||'';});if($('ex-moneda_ref'))$('ex-moneda_ref').value=r.moneda_ref||'USD';oCl('ex-cl',r.cli_id||'');}
 function rstFP(r={}){oPv('fp-pv',r.pv_id||'');oTG('fp-tg',r.tg_id||'');oOp('fp-op',r.op_id||'');['fe','fv','nro','asig','ep','notas'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||'';});if($('fp-tc2'))$('fp-tc2').value=r.tc||'Factura A';['n21','n105','n0'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||0;});if($('fp-mon'))$('fp-mon').value=r.mon||'ARS';if($('fp-tc'))$('fp-tc').value=r.tc_v||lTC();cIVA('fp');}
-function rstFE(r={}){oCl('fe-cl',r.cl_id||'');oOp('fe-op',r.op_id||'',editIdx<0);['fe','fv','nro','concepto','ec','notas'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||'';});if($('fe-tc2'))$('fe-tc2').value=r.tc||'Factura A';['n21','n105','n0'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||0;});if($('fe-mon'))$('fe-mon').value=r.mon||'USD';if($('fe-tc'))$('fe-tc').value=r.tc_v||lTC();cIVA('fe');}
+function rstFE(r={}){oCl('fe-cl',r.cl_id||'');oOp('fe-op',r.op_id||'',editIdx<0);['fe','fv','nro','concepto','ec','notas'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||'';});if($('fe-tc2'))$('fe-tc2').value=r.tc||'Factura A';['n21','n27','n105','n5','n0'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||0;});if($('fe-reint'))$('fe-reint').value=r.reint||0;if($('fe-mon'))$('fe-mon').value=r.mon||'USD';if($('fe-tc'))$('fe-tc').value=r.tc_v||lTC();cIVA('fe');}
 function rstPg(r={}){oFP('pg-fac',r.fac_id||'',!r.id);oPv('pg-pv',r.pv_id||'');if($('pg-fp'))$('pg-fp').value=r.fp||'';if($('pg-forma')){$('pg-forma').value=r.forma||'';tgChq('pg');}['banco','ref','f_ac','mars','musd','mon','chqb','chqn','chqf','obs'].forEach(f=>{const el=$('pg-'+f);if(el)el.value=r[f]||'';});}
 function rstCb(r={}){oFE('cb-fac',r.fac_id||'',!r.id);oCl('cb-cl',r.cl_id||'');if($('cb-fc'))$('cb-fc').value=r.fc||'';if($('cb-forma')){$('cb-forma').value=r.forma||'';tgChq('cb');}['banco','ref','f_ac','mars','musd','mon','chqb','chqn','chqf','obs'].forEach(f=>{const el=$('cb-'+f);if(el)el.value=r[f]||'';});}
 
@@ -751,7 +758,8 @@ function gFE(){
   const i21=n21*.21,i105=n105*.105,i27=n27*.27,i5=n5*.05,tiva=i21+i105+i27+i5,neto=n21+n105+n27+n5+n0,total=neto+tiva;
   const tars=mon==='USD'?total*tc:total,tusd=mon==='USD'?total:(tc>1?total/tc:0);
   const ec=v('fe-ec')||'PENDIENTE';
-  const datosE={id:editIdx>=0?D.facturas_emit[editIdx].id:nid(D.facturas_emit),fe:v('fe-fe'),fv:v('fe-fv'),cl_id:cliId,cliente:cli.razon||'',nro:v('fe-nro'),tipo_comp:v('fe-tc2')||'Factura A',op_id:opId,op:op.exp||'',concepto:v('fe-concepto')||'',n21,i21,n27,i27,n105,i105,n5,i5,n0,tiva,neto,tars,mon,tusd,tc_v:tc,ec,notas:v('fe-notas')||''};
+  const reint=parseFloat(v('fe-reint'))||0;
+  const datosE={id:editIdx>=0?D.facturas_emit[editIdx].id:nid(D.facturas_emit),fe:v('fe-fe'),fv:v('fe-fv'),cl_id:cliId,cliente:cli.razon||'',nro:v('fe-nro'),tipo_comp:v('fe-tc2')||'Factura A',op_id:opId,op:op.exp||'',concepto:v('fe-concepto')||'',n21,i21,n27,i27,n105,i105,n5,i5,n0,reint,tiva,neto,tars,mon,tusd,tc_v:tc,ec,notas:v('fe-notas')||''};
   if(editIdx>=0)D.facturas_emit[editIdx]=datosE;else D.facturas_emit.push(datosE);
   save('facturas_emit');editIdx=-1;cM('m-fe');
   if(ec==='COBRADA'&&confirm('Factura registrada como COBRADA.\n\n¿Registrás la cobranza ahora?')){
@@ -929,6 +937,7 @@ render('dash');
           <div class="fgrp"><label class="flbl">Neto gravado 10.5%</label><input type="number" class="fc" id="fe-n105" placeholder="0" oninput="cIVA('fe')"></div>
           <div class="fgrp"><label class="flbl">Neto gravado 5%</label><input type="number" class="fc" id="fe-n5" placeholder="0" oninput="cIVA('fe')"></div>
           <div class="fgrp"><label class="flbl">Neto exento</label><input type="number" class="fc" id="fe-n0" placeholder="0" oninput="cIVA('fe')"></div>
+          <div class="fgrp"><label class="flbl" style="color:var(--org)" title="Parte del exento que es reintegro de gastos a cuenta del cliente. Entra en la factura pero NO suma a la rentabilidad.">Reintegro gastos (de exento)</label><input type="number" class="fc" id="fe-reint" placeholder="0" style="border-color:rgba(245,158,11,.3)"></div>
           <div class="fgrp"><label class="flbl">IVA 21%</label><input type="number" class="fc" id="fe-i21" readonly></div>
           <div class="fgrp"><label class="flbl">IVA 27%</label><input type="number" class="fc" id="fe-i27" readonly></div>
           <div class="fgrp"><label class="flbl">IVA 10.5%</label><input type="number" class="fc" id="fe-i105" readonly></div>
