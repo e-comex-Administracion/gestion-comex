@@ -654,13 +654,20 @@ function _xCls(wb){mkWS(wb,'Clientes',['Razón Social','CUIT','Condición IVA','
 function _xTC(wb){mkWS(wb,'Tipo de Cambio',['Fecha','TC Oficial','TC MEP','TC Referencia','Fuente','Notas'],D.tipo_cambio.map(t=>[t.fecha,t.of,t.mep,t.ref,t.fuente,t.notas||'']));}
 function _xTG(wb){mkWS(wb,'Tipos de Gasto',['Categoría','Nombre','Aplica a'],D.tipos_gasto.map(t=>[t.cat,t.nom,t.aplica]));}
 function _xRent(wb){
-  mkWS(wb,'Rentabilidad',['Expediente','Cliente','Estado','Gastos ARS','Facturado ARS','Resultado ARS','Margen %','Gastos USD','Facturado USD'],
+  const tcRef=lTC();
+  mkWS(wb,'Rentabilidad',['Expediente','Cliente','Estado','Gastos ARS','Facturado Bruto ARS','Reintegros ARS','Facturado Neto ARS','Resultado ARS','Margen %','Gastos USD','Facturado USD','Fuente Base'],
     D.operaciones.map(o=>{
-      const g=D.facturas_prov.filter(f=>f.op_id===o.id).reduce((a,f)=>a+(f.tars||0),0);
-      const gu=D.facturas_prov.filter(f=>f.op_id===o.id).reduce((a,f)=>a+(f.tusd||0),0);
-      const fac=D.facturas_emit.find(f=>f.op_id===o.id);const c=fac?(fac.tars||0):0,cu=fac?(fac.tusd||0):0;
-      const r=c-g,m=c>0?parseFloat((r/c*100).toFixed(2)):0;
-      return[o.exp,o.cliente,o.estado,g,c,r,m,gu,cu];
+      const gastos=D.facturas_prov.filter(f=>f.op_id===o.id).reduce((a,f)=>a+(f.tars||0),0);
+      const gastosU=D.facturas_prov.filter(f=>f.op_id===o.id).reduce((a,f)=>a+(f.tusd||0),0);
+      const facs=D.facturas_emit.filter(f=>f.op_id===o.id);
+      const facBruto=facs.reduce((a,f)=>a+(f.tars||0),0);
+      const facBrutoU=facs.reduce((a,f)=>a+(f.tusd||0),0);
+      const reint=facs.reduce((a,f)=>a+((f.reint||0)*(f.mon==='USD'?(f.tc_v||tcRef):1)),0);
+      let base,fuente;
+      if(facs.length){base=facBruto-reint;fuente='Factura';}
+      else{base=(o.importe_ref||0)>0?(o.moneda_ref==='USD'?(o.importe_ref*(o.tc||tcRef)):o.importe_ref):0;fuente='Estimado';}
+      const r=base-gastos,m=base>0?parseFloat((r/base*100).toFixed(2)):0;
+      return[o.exp,o.cliente,o.estado,gastos,facBruto,reint,base,r,m,gastosU,facBrutoU,fuente];
     }));
 }
 function xTodo(){const wb=XLSX.utils.book_new();_xOps(wb);_xFP(wb);_xFE(wb);_xPg(wb);_xCb(wb);_xPvs(wb);_xCls(wb);_xTC(wb);_xTG(wb);_xRent(wb);XLSX.writeFile(wb,'GestionComex_Completo_'+hoy()+'.xlsx');toast('Exportación completa ✓');}
