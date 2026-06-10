@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GestiónComex</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/PptxGenJS/3.12.0/pptxgen.bundle.js"></script>
+
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0f1117;--s1:#161922;--s2:#1e2330;--br:#2a3047;--acc:#4f9cf9;--grn:#22c55e;--red:#ef4444;--org:#f59e0b;--pur:#7c3aed;--tx:#e8eaf0;--tx2:#8b92a8;--tx3:#5a6178;--ff:'Inter',sans-serif;--fm:'JetBrains Mono',monospace}
@@ -877,22 +877,13 @@ function abrirNuevoPres(){
   editIdx=-1;editTabla='presupuestos';
   if($('pr-nro'))$('pr-nro').value=nextNroPres();
   if($('pr-fecha'))$('pr-fecha').value=new Date().toISOString().slice(0,10);
-  ['pr-cuit','pr-cliente','pr-rubro','pr-producto','pr-descripcion','pr-clasificacion','pr-pos_aran','pr-observaciones'].forEach(id=>{if($(id))$(id).value='';});
+  ['pr-cuit','pr-cliente','pr-rubro','pr-producto','pr-descripcion','pr-clasificacion','pr-pos_aran','pr-observaciones','pr-precio_usd','pr-precio_eur','pr-flete_origen','pr-flete_flete','pr-flete_destino','pr-seguro','pr-derechos','pr-tasa_est','pr-iva_aduana','pr-iva_adicional','pr-ganancias','pr-iibb','pr-honorarios'].forEach(id=>{if($(id))$(id).value='';});if($('pr-arancel_sim'))$('pr-arancel_sim').value='10.00';if($('pr-incoterm'))$('pr-incoterm').value='EXW';if($('pr-flete_tipo'))$('pr-flete_tipo').value='Marítimo';
   if($('pr-cantidad'))$('pr-cantidad').value=1;
-  if($('pr-exw_eur'))$('pr-exw_eur').value='';
-  if($('pr-exw_usd'))$('pr-exw_usd').value='';
+  
   if($('pr-estado'))$('pr-estado').value='Pendiente';
   if($('pr-tipo_cli'))$('pr-tipo_cli').value='importador';
   if($('pr-iva_rate'))$('pr-iva_rate').value='21';
-  presInitCostos([
-    {concepto:'Flete marítimo internacional',monto:'',es_iva:false},
-    {concepto:'Seguro internacional',monto:'',es_iva:false},
-    {concepto:'Tributos aduaneros a pagar',monto:'',es_iva:true},
-    {concepto:'Honorarios',monto:'',es_iva:false},
-    {concepto:'Gastos de depósito y portuarios',monto:'',es_iva:false},
-    {concepto:'Gastos de transferencia internacional',monto:'',es_iva:false},
-    {concepto:'Transporte territorio nacional',monto:'',es_iva:false},
-  ]);
+  presInitCostos([{concepto:'Gastos de depósito y portuarios',monto:'',es_iva:false},{concepto:'Transporte territorio nacional',monto:'',es_iva:false}]);
   calcPres();
   oM('m-pres');
 }
@@ -902,8 +893,11 @@ function editarPres(i){
   editIdx=i;editTabla='presupuestos';
   const p=D.presupuestos[i];
   if(!p)return;
-  const flds={nro:p.nro,fecha:p.fecha,cuit:p.cuit,cliente:p.cliente,rubro:p.rubro,producto:p.producto,descripcion:p.descripcion,clasificacion:p.clasificacion,pos_aran:p.pos_aran,cantidad:p.cantidad||1,exw_eur:p.exw_eur||'',exw_usd:p.exw_usd||'',observaciones:p.observaciones||'',estado:p.estado||'Pendiente'};
+  const flds={nro:p.nro,fecha:p.fecha,cuit:p.cuit,cliente:p.cliente,rubro:p.rubro,producto:p.producto,descripcion:p.descripcion,clasificacion:p.clasificacion,pos_aran:p.pos_aran,cantidad:p.cantidad||1,precio_usd:p.precio_usd||p.exw_usd||'',precio_eur:p.precio_eur||p.exw_eur||'',observaciones:p.observaciones||'',estado:p.estado||'Pendiente',flete_origen:p.flete_origen||'',flete_flete:p.flete_flete||'',flete_destino:p.flete_destino||'',seguro:p.seguro||'',derechos:p.derechos||'',tasa_est:p.tasa_est||'',iva_aduana:p.iva_aduana||'',iva_adicional:p.iva_adicional||'',ganancias:p.ganancias||'',iibb:p.iibb||'',honorarios:p.honorarios||''};
   Object.entries(flds).forEach(([k,val])=>{if($('pr-'+k))$('pr-'+k).value=val||'';});
+  if($('pr-incoterm'))$('pr-incoterm').value=p.incoterm||'EXW';
+  if($('pr-flete_tipo'))$('pr-flete_tipo').value=p.flete_tipo||'Marítimo';
+  if($('pr-arancel_sim'))$('pr-arancel_sim').value='10.00';
   if($('pr-tipo_cli'))$('pr-tipo_cli').value=p.es_importador===false?'no_importador':'importador';
   if($('pr-iva_rate'))$('pr-iva_rate').value=p.iva_rate||'21';
   presInitCostos(p.costos||[]);
@@ -946,25 +940,39 @@ function presGetCostos(){
 }
 
 // ── Calcular totales ───────────────────────────────────────
+function nv(id){return parseFloat(v(id))||0;}
 function calcPres(){
-  const exwUSD=parseFloat(v('pr-exw_usd'))||0;
+  const precioUSD=nv('pr-precio_usd');
   const esImportador=v('pr-tipo_cli')!=='no_importador';
-  const ivaRate=(parseFloat(v('pr-iva_rate'))||21)/100;
-  const costos=presGetCostos();
-  const totalCostos=costos.reduce((a,c)=>a+(c.monto||0),0);
-  const totalUSD=exwUSD+totalCostos;
+  // Flete
+  const fleteOrigen=nv('pr-flete_origen'),fleteFlete=nv('pr-flete_flete'),fleteDestino=nv('pr-flete_destino');
+  const totalFlete=fleteOrigen+fleteFlete+fleteDestino;
+  // Seguro
+  const seguro=nv('pr-seguro');
+  // Tributos
+  const derechos=nv('pr-derechos'),tasa=nv('pr-tasa_est'),iva=nv('pr-iva_aduana'),
+        ivaAd=nv('pr-iva_adicional'),ganancias=nv('pr-ganancias'),iibb=nv('pr-iibb'),sim=10;
+  if($('pr-arancel_sim'))$('pr-arancel_sim').value='10.00';
+  const totalTributos=derechos+tasa+iva+ivaAd+ganancias+iibb+sim;
+  // Honorarios
+  const honorarios=nv('pr-honorarios');
+  // Otros costos dinámicos
+  const otros=presGetCostos();const totalOtros=otros.reduce((a,c)=>a+(c.monto||0),0);
+  // Total general
+  const totalUSD=precioUSD+totalFlete+seguro+totalTributos+honorarios+totalOtros;
   if($('pr-total_usd'))$('pr-total_usd').value=totalUSD.toFixed(2);
-  // Costo final x ítem: excluye IVA si importador, incluye todo si no importador
+  // Costo final: para importador se restan recuperables (IVA, IVA ad, Ganancias, IIBB)
   let costoFinal;
   if(esImportador){
-    const ivaTotal=costos.filter(c=>c.es_iva).reduce((a,c)=>a+(c.monto||0),0);
-    costoFinal=totalUSD-ivaTotal;
+    const recuperables=iva+ivaAd+ganancias+iibb;
+    costoFinal=totalUSD-recuperables;
   }else{
-    // No importador: se muestra sin IVA (neto)
-    const ivaTotal=costos.filter(c=>c.es_iva).reduce((a,c)=>a+(c.monto||0),0);
-    costoFinal=totalUSD-ivaTotal*(ivaRate);
+    costoFinal=totalUSD;
   }
   if($('pr-costo_final'))$('pr-costo_final').value=costoFinal.toFixed(2);
+  // Update desglose displays
+  if($('pr-total-flete-disp'))$('pr-total-flete-disp').textContent='USD '+fN(totalFlete);
+  if($('pr-total-trib-disp'))$('pr-total-trib-disp').textContent='USD '+fN(totalTributos);
 }
 
 // ── Buscar/crear cliente por CUIT ──────────────────────────
@@ -986,9 +994,12 @@ function gPres(){
   const nro=v('pr-nro').trim();
   if(!nro){toast('El número de presupuesto es obligatorio','er');return;}
   const costos=presGetCostos();
-  const exwUSD=parseFloat(v('pr-exw_usd'))||0;
+  const incoterm=v('pr-incoterm')||'EXW';
+  const precioUSD=parseFloat(v('pr-precio_usd'))||0;
+  const precioEUR=parseFloat(v('pr-precio_eur'))||0;
   const totalUSD=parseFloat(v('pr-total_usd'))||0;
   const costoFinal=parseFloat(v('pr-costo_final'))||0;
+  const honorarios=parseFloat(v('pr-honorarios'))||0;
   const cuit=v('pr-cuit').trim();
   const clienteRazon=v('pr-cliente').trim();
   // Auto-crear cliente si CUIT nuevo
@@ -1006,8 +1017,22 @@ function gPres(){
     rubro:v('pr-rubro'),producto:v('pr-producto'),
     descripcion:v('pr-descripcion'),clasificacion:v('pr-clasificacion'),
     pos_aran:v('pr-pos_aran'),cantidad:parseFloat(v('pr-cantidad'))||1,
-    exw_eur:parseFloat(v('pr-exw_eur'))||0,exw_usd:exwUSD,
-    costos,total_usd:totalUSD,costo_final:costoFinal,
+    incoterm,precio_usd:precioUSD,precio_eur:precioEUR,
+    flete_tipo:v('pr-flete_tipo')||'Marítimo',
+    flete_origen:parseFloat(v('pr-flete_origen'))||0,
+    flete_flete:parseFloat(v('pr-flete_flete'))||0,
+    flete_destino:parseFloat(v('pr-flete_destino'))||0,
+    seguro:parseFloat(v('pr-seguro'))||0,
+    derechos:parseFloat(v('pr-derechos'))||0,
+    tasa_est:parseFloat(v('pr-tasa_est'))||0,
+    iva_aduana:parseFloat(v('pr-iva_aduana'))||0,
+    iva_adicional:parseFloat(v('pr-iva_adicional'))||0,
+    ganancias:parseFloat(v('pr-ganancias'))||0,
+    iibb:parseFloat(v('pr-iibb'))||0,
+    arancel_sim:10,
+    honorarios,
+    otros_costos:costos,
+    total_usd:totalUSD,costo_final:costoFinal,
     es_importador:v('pr-tipo_cli')!=='no_importador',
     iva_rate:parseFloat(v('pr-iva_rate'))||21,
     observaciones:v('pr-observaciones'),
@@ -1036,7 +1061,7 @@ function aprobarPres(i){
     merc:p.producto+(p.descripcion?' — '+p.descripcion.substring(0,50):''),
     pais:'',tipo:v('pr-estado')||'Importación Definitiva para Consumo',
     f_ap:new Date().toISOString().slice(0,10),f_cl:'',estado:'EN TRAMITE',
-    tc:lTC(),hon_usd:0,hon_ars:0,
+    tc:lTC(),hon_usd:p.honorarios||0,hon_ars:0,
     importe_ref:p.costo_final||p.total_usd||0,moneda_ref:'USD',
     f_cobro_est:'',notas:'Generado desde presupuesto '+p.nro,
   };
@@ -1059,7 +1084,19 @@ function rechazarPres(i){
 function exportPresXPPT(i){
   const p=D.presupuestos[i];
   if(!p){toast('Presupuesto no encontrado','er');return;}
-  if(typeof PptxGenJS==='undefined'){toast('Cargando librería PPT, reintentá en unos segundos','er');return;}
+  loadPptxLib(()=>_doPPT(i));
+}
+function loadPptxLib(cb){
+  if(typeof PptxGenJS!=='undefined'){cb();return;}
+  const s=document.createElement('script');
+  s.src='https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js';
+  s.onload=()=>{if(typeof PptxGenJS!=='undefined')cb();else{toast('Error al cargar librería PPT','er');}};
+  s.onerror=()=>toast('No se pudo cargar la librería PowerPoint','er');
+  document.head.appendChild(s);
+}
+function _doPPT(i){
+  const p=D.presupuestos[i];
+  if(!p){toast('Presupuesto no encontrado','er');return;}
   const prs=new PptxGenJS();
   prs.layout='LAYOUT_16x9';
   const BG='0D1B2A',BG2='112031',ACC='1A6BAE',ACC2='1B8FD8',WHT='FFFFFF',GRY='B8C8DC',YEL='F4A623',DRK='07111C';
@@ -1108,13 +1145,34 @@ function exportPresXPPT(i){
     {text:'Importe USD',options:{bold:true,fill:{color:ACC},color:WHT,fontFace:'Calibri',fontSize:11,align:'right'}},
     {text:'Obs.',options:{bold:true,fill:{color:ACC},color:WHT,fontFace:'Calibri',fontSize:11,align:'center'}},
   ]);
-  // EXW row
+  // Precio del producto row
+  const inco=p.incoterm||'EXW';
+  const precioLabel=inco+': '+(p.precio_eur?'EUR '+fN(p.precio_eur)+' | ':'')+'USD '+fN(p.precio_usd);
   rows3.push([
-    {text:'EXW: '+(p.exw_eur?'EUR '+fN(p.exw_eur)+' ':'')+'(USD '+fN(p.exw_usd)+' aprox.)',options:{fontFace:'Calibri',fontSize:11,color:WHT,fill:{color:BG2}}},
-    {text:'USD '+fN(p.exw_usd),options:{fontFace:'Calibri',fontSize:11,color:YEL,bold:true,align:'right',fill:{color:BG2}}},
+    {text:precioLabel,options:{fontFace:'Calibri',fontSize:11,color:WHT,fill:{color:BG2}}},
+    {text:'USD '+fN(p.precio_usd||p.exw_usd),options:{fontFace:'Calibri',fontSize:11,color:YEL,bold:true,align:'right',fill:{color:BG2}}},
     {text:'',options:{fill:{color:BG2}}},
   ]);
-  costos.forEach((c,idx)=>{
+  // Flete
+  const ftipo=p.flete_tipo||'Marítimo';
+  const ftotal=(p.flete_origen||0)+(p.flete_flete||0)+(p.flete_destino||0);
+  if(ftotal>0){
+    [[('Flete '+ftipo+' — Gastos en Origen'),(p.flete_origen||0),false],[('Flete '+ftipo),(p.flete_flete||0),false],[('Gastos en Destino'),(p.flete_destino||0),false]].forEach(([lbl,monto,isIva],idx)=>{
+      if(monto>0){const bg=idx%2===0?BG:BG2;rows3.push([{text:lbl,options:{fontFace:'Calibri',fontSize:11,color:WHT,fill:{color:bg}}},{text:'USD '+fN(monto),options:{fontFace:'Calibri',fontSize:11,color:WHT,align:'right',fill:{color:bg}}},{text:'',options:{fill:{color:bg}}}]);}
+    });
+  }
+  // Seguro
+  if(p.seguro>0){rows3.push([{text:'Seguro Internacional',options:{fontFace:'Calibri',fontSize:11,color:WHT,fill:{color:BG}}},{text:'USD '+fN(p.seguro),options:{fontFace:'Calibri',fontSize:11,color:WHT,align:'right',fill:{color:BG}}},{text:'',options:{fill:{color:BG}}}]);}
+  // Tributos
+  const tribItems=[[('Derechos de Importación'),(p.derechos||0),false],[('Tasa de Estadísticas'),(p.tasa_est||0),false],[('IVA Aduanero'),(p.iva_aduana||0),true],[('IVA Adicional'),(p.iva_adicional||0),true],[('Imp. a las Ganancias'),(p.ganancias||0),true],[('Ingresos Brutos'),(p.iibb||0),true],[('Arancel SIM'),10,false]];
+  tribItems.forEach(([lbl,monto,recup],idx)=>{
+    if(monto>0){const bg=idx%2===0?BG:BG2;const marca=(recup&&p.es_importador!==false)?'Rec.':'';rows3.push([{text:lbl,options:{fontFace:'Calibri',fontSize:11,color:WHT,fill:{color:bg}}},{text:'USD '+fN(monto),options:{fontFace:'Calibri',fontSize:11,color:recup?YEL:WHT,align:'right',fill:{color:bg}}},{text:marca,options:{fontFace:'Calibri',fontSize:9,italic:true,color:YEL,align:'center',fill:{color:bg}}}]);}
+  });
+  // Honorarios
+  if(p.honorarios>0){rows3.push([{text:'Honorarios E-COMEX',options:{fontFace:'Calibri',fontSize:11,color:WHT,fill:{color:BG2},bold:true}},{text:'USD '+fN(p.honorarios),options:{fontFace:'Calibri',fontSize:11,color:WHT,align:'right',fill:{color:BG2},bold:true}},{text:'',options:{fill:{color:BG2}}}]);}
+  // Otros costos
+  const otrosCostos=p.otros_costos||p.costos||[];
+  otrosCostos.forEach((c,idx)=>{
     const bg=idx%2===0?BG:BG2;
     rows3.push([
       {text:c.concepto||'',options:{fontFace:'Calibri',fontSize:11,color:WHT,fill:{color:bg}}},
@@ -1149,14 +1207,14 @@ function exportPresXPPT(i){
     [
       {text:p.producto||'',options:{fontFace:'Calibri',fontSize:11,color:WHT,fill:{color:BG2}}},
       {text:String(qty),options:{fontFace:'Calibri',fontSize:11,color:WHT,align:'center',fill:{color:BG2}}},
-      {text:p.exw_eur?'EUR '+fN(p.exw_eur):'—',options:{fontFace:'Calibri',fontSize:11,color:GRY,align:'right',fill:{color:BG2}}},
+      {text:p.precio_eur?'EUR '+fN(p.precio_eur):(p.exw_eur?'EUR '+fN(p.exw_eur):'—'),options:{fontFace:'Calibri',fontSize:11,color:GRY,align:'right',fill:{color:BG2}}},
       {text:'USD '+fN(cfItem),options:{fontFace:'Calibri',fontSize:12,color:YEL,bold:true,align:'right',fill:{color:BG2}}},
       {text:'USD '+fN(cfUnit),options:{fontFace:'Calibri',fontSize:12,color:YEL,bold:true,align:'right',fill:{color:BG2}}},
     ],
     [
       {text:'TOTAL',options:{bold:true,fill:{color:DRK},color:WHT,fontFace:'Calibri',fontSize:12}},
       {text:String(qty),options:{fontFace:'Calibri',fontSize:11,color:WHT,align:'center',fill:{color:DRK}}},
-      {text:p.exw_eur?'EUR '+fN(p.exw_eur):'—',options:{fontFace:'Calibri',fontSize:11,color:GRY,align:'right',fill:{color:DRK}}},
+      {text:p.precio_eur?'EUR '+fN(p.precio_eur):(p.exw_eur?'EUR '+fN(p.exw_eur):'—'),options:{fontFace:'Calibri',fontSize:11,color:GRY,align:'right',fill:{color:DRK}}},
       {text:'USD '+fN(cfItem),options:{fontFace:'Calibri',fontSize:13,color:YEL,bold:true,align:'right',fill:{color:DRK}}},
       {text:'USD '+fN(cfUnit),options:{fontFace:'Calibri',fontSize:13,color:YEL,bold:true,align:'right',fill:{color:DRK}}},
     ],
@@ -1437,106 +1495,151 @@ render('dash');
 
 
 <!-- ═══ MODAL PRESUPUESTO ═══════════════════════════════════ -->
-<div class="mo" id="m-pres"><div class="md" style="max-width:780px">
+<div class="mo" id="m-pres"><div class="md" style="max-width:800px">
   <div class="mh"><span class="mt">Presupuesto / Cotización</span><button class="xb" onclick="cM('m-pres')">×</button></div>
   <div class="mb">
 
-    <!-- Encabezado -->
     <div class="fg">
       <div class="fgrp"><label class="flbl">Nro. Presupuesto</label><input class="fc" id="pr-nro" placeholder="PRES-2026-001"></div>
       <div class="fgrp"><label class="flbl">Fecha</label><input type="date" class="fc" id="pr-fecha"></div>
     </div>
 
-    <!-- Cliente -->
+    <!-- CLIENTE -->
     <div style="background:rgba(79,156,249,.06);border:1px solid rgba(79,156,249,.2);border-radius:7px;padding:11px;margin-top:10px">
       <div style="font-size:10px;color:var(--acc);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Cliente</div>
       <div class="fg">
-        <div class="fgrp"><label class="flbl">CUIT</label>
-          <input class="fc" id="pr-cuit" placeholder="30-12345678-9" onblur="buscarCliPres(this.value)"></div>
-        <div class="fgrp"><label class="flbl">Razón Social</label>
-          <input class="fc" id="pr-cliente" placeholder="Se completa al cargar CUIT o ingresá manualmente"></div>
+        <div class="fgrp"><label class="flbl">CUIT</label><input class="fc" id="pr-cuit" placeholder="30-12345678-9" onblur="buscarCliPres(this.value)"></div>
+        <div class="fgrp"><label class="flbl">Razón Social</label><input class="fc" id="pr-cliente" placeholder="Se completa al cargar CUIT o ingresá manualmente"></div>
       </div>
       <div id="pr-nuevo-cli-banner" style="display:none;margin-top:8px;padding:8px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:6px;font-size:11px;color:var(--org)">
         ⚠️ CUIT no encontrado — al guardar se creará automáticamente como nuevo cliente
       </div>
     </div>
 
-    <!-- Producto -->
+    <!-- PRODUCTO -->
     <div class="fg" style="margin-top:10px">
       <div class="fgrp"><label class="flbl">Rubro</label><input class="fc" id="pr-rubro" placeholder="Industrial / Automotriz..."></div>
       <div class="fgrp"><label class="flbl">Producto</label><input class="fc" id="pr-producto" placeholder="Nombre del producto"></div>
-      <div class="fgrp fsp"><label class="flbl">Descripción del Producto</label>
-        <textarea class="fc" id="pr-descripcion" rows="2" placeholder="Descripción técnica del producto"></textarea></div>
-      <div class="fgrp fsp"><label class="flbl">Clasificación Arancelaria</label>
-        <textarea class="fc" id="pr-clasificacion" rows="2" placeholder="Texto de la clasificación"></textarea></div>
-      <div class="fgrp"><label class="flbl">Posición Arancelaria</label>
-        <input class="fc" id="pr-pos_aran" placeholder="8433.40.00.900"></div>
-      <div class="fgrp"><label class="flbl">Cantidad (unidades)</label>
-        <input type="number" class="fc" id="pr-cantidad" value="1" min="1"></div>
+      <div class="fgrp" style="grid-column:1/-1"><label class="flbl">Descripción del Producto</label><textarea class="fc" id="pr-descripcion" rows="2"></textarea></div>
+      <div class="fgrp" style="grid-column:1/-1"><label class="flbl">Clasificación Arancelaria</label><textarea class="fc" id="pr-clasificacion" rows="2"></textarea></div>
+      <div class="fgrp"><label class="flbl">Posición Arancelaria</label><input class="fc" id="pr-pos_aran" placeholder="8433.40.00.900"></div>
+      <div class="fgrp"><label class="flbl">Cantidad (unidades)</label><input type="number" class="fc" id="pr-cantidad" value="1" min="1"></div>
     </div>
 
-    <!-- EXW -->
+    <!-- PRECIO DEL PRODUCTO -->
     <div style="background:var(--s2);border-radius:7px;padding:11px;margin-top:10px">
-      <div style="font-size:10px;color:var(--tx2);font-weight:600;text-transform:uppercase;margin-bottom:8px">Precio EXW (Fábrica)</div>
+      <div style="font-size:10px;color:var(--tx2);font-weight:600;text-transform:uppercase;margin-bottom:8px">Precio del Producto</div>
       <div class="fg">
-        <div class="fgrp"><label class="flbl">Precio EXW EUR</label>
-          <input type="number" class="fc" id="pr-exw_eur" placeholder="0.00" oninput="calcPres()"></div>
-        <div class="fgrp"><label class="flbl">Precio EXW USD (aprox)</label>
-          <input type="number" class="fc" id="pr-exw_usd" placeholder="0.00" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl">Condición de Venta (Incoterm)</label>
+          <select class="fc" id="pr-incoterm"><option value="EXW">EXW</option><option value="FCA">FCA</option><option value="FAS">FAS</option><option value="FOB">FOB</option><option value="CFR">CFR</option><option value="CIF">CIF</option><option value="CPT">CPT</option><option value="CIP">CIP</option><option value="DAP">DAP</option><option value="DPU">DPU</option><option value="DDP">DDP</option></select></div>
+        <div class="fgrp"><label class="flbl">Precio USD *</label>
+          <input type="number" class="fc" id="pr-precio_usd" placeholder="0.00" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl">Precio EUR (alternativo)</label>
+          <input type="number" class="fc" id="pr-precio_eur" placeholder="0.00"></div>
       </div>
     </div>
 
-    <!-- Costos dinámicos -->
+    <!-- FLETE INTERNACIONAL -->
     <div style="background:var(--s2);border-radius:7px;padding:11px;margin-top:10px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div style="font-size:10px;color:var(--tx2);font-weight:600;text-transform:uppercase">Flete Internacional</div>
+        <select class="fc" id="pr-flete_tipo" style="width:auto;font-size:11px;padding:3px 8px" onchange="calcPres()">
+          <option>Marítimo</option><option>Aéreo</option><option>Terrestre</option>
+        </select>
+        <span id="pr-total-flete-disp" style="font-size:11px;color:var(--acc);font-family:var(--fm)">USD 0</span>
+      </div>
+      <div class="fg">
+        <div class="fgrp"><label class="flbl">Gastos en Origen (USD)</label>
+          <input type="number" class="fc" id="pr-flete_origen" placeholder="0.00" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl">Flete (USD)</label>
+          <input type="number" class="fc" id="pr-flete_flete" placeholder="0.00" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl">Gastos en Destino (USD)</label>
+          <input type="number" class="fc" id="pr-flete_destino" placeholder="0.00" oninput="calcPres()"></div>
+      </div>
+    </div>
+
+    <!-- SEGURO -->
+    <div class="fg" style="margin-top:10px">
+      <div class="fgrp"><label class="flbl">Seguro Internacional (USD)</label>
+        <input type="number" class="fc" id="pr-seguro" placeholder="0.00" oninput="calcPres()"></div>
+    </div>
+
+    <!-- TRIBUTOS ADUANEROS -->
+    <div style="background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.15);border-radius:7px;padding:11px;margin-top:10px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:10px;color:var(--red);font-weight:600;text-transform:uppercase">Tributos Aduaneros a Pagar</div>
+        <span id="pr-total-trib-disp" style="font-size:11px;color:var(--red);font-family:var(--fm)">USD 0</span>
+      </div>
+      <div class="fg">
+        <div class="fgrp"><label class="flbl">Derechos de Importación (USD)</label>
+          <input type="number" class="fc" id="pr-derechos" placeholder="0.00" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl">Tasa de Estadísticas (USD)</label>
+          <input type="number" class="fc" id="pr-tasa_est" placeholder="0.00" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl" style="color:var(--org)">IVA (USD) <small>— recuperable RI</small></label>
+          <input type="number" class="fc" id="pr-iva_aduana" placeholder="0.00" oninput="calcPres()" style="border-color:rgba(245,158,11,.3)"></div>
+        <div class="fgrp"><label class="flbl" style="color:var(--org)">IVA Adicional (USD) <small>— recuperable RI</small></label>
+          <input type="number" class="fc" id="pr-iva_adicional" placeholder="0.00" oninput="calcPres()" style="border-color:rgba(245,158,11,.3)"></div>
+        <div class="fgrp"><label class="flbl" style="color:var(--org)">Imp. a las Ganancias (USD) <small>— recuperable RI</small></label>
+          <input type="number" class="fc" id="pr-ganancias" placeholder="0.00" oninput="calcPres()" style="border-color:rgba(245,158,11,.3)"></div>
+        <div class="fgrp"><label class="flbl" style="color:var(--org)">Ingresos Brutos (USD) <small>— recuperable RI</small></label>
+          <input type="number" class="fc" id="pr-iibb" placeholder="0.00" oninput="calcPres()" style="border-color:rgba(245,158,11,.3)"></div>
+        <div class="fgrp"><label class="flbl">Arancel SIM (USD) <small>— fijo</small></label>
+          <input type="number" class="fc" id="pr-arancel_sim" value="10.00" readonly style="color:var(--tx3)"></div>
+      </div>
+      <div style="font-size:10px;color:var(--org);margin-top:8px">⚠️ Los ítems en naranja son recuperables para Responsable Inscripto — se descuentan del Costo Final.</div>
+    </div>
+
+    <!-- RENTABILIDAD / HONORARIOS -->
+    <div style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:7px;padding:11px;margin-top:10px">
+      <div style="font-size:10px;color:var(--grn);font-weight:600;text-transform:uppercase;margin-bottom:8px">Rentabilidad / Honorarios</div>
+      <div class="fg">
+        <div class="fgrp"><label class="flbl" style="color:var(--grn)">Honorarios E-COMEX (USD) — Rentabilidad Actual</label>
+          <input type="number" class="fc" id="pr-honorarios" placeholder="0.00" oninput="calcPres()" style="border-color:rgba(34,197,94,.3);color:var(--grn)"></div>
+      </div>
+      <div style="font-size:10px;color:var(--tx3);margin-top:5px">Este valor se convierte en los honorarios del expediente al aprobar. Siempre editable.</div>
+    </div>
+
+    <!-- OTROS COSTOS -->
+    <div style="background:var(--s2);border-radius:7px;padding:11px;margin-top:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div style="font-size:10px;color:var(--tx2);font-weight:600;text-transform:uppercase">Otros Costos (USD)</div>
         <button class="btn bg2 bs" onclick="presAddRow({concepto:'',monto:'',es_iva:false});calcPres()">＋ Agregar</button>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 130px 90px 30px;gap:4px;margin-bottom:5px">
+      <div style="display:grid;grid-template-columns:1fr 130px 30px;gap:4px;margin-bottom:4px">
         <div style="font-size:10px;color:var(--tx3)">Concepto</div>
         <div style="font-size:10px;color:var(--tx3)">Monto USD</div>
-        <div style="font-size:10px;color:var(--org)">Marca IVA</div>
         <div></div>
       </div>
       <div id="pr-costos-rows"></div>
-      <div style="display:grid;grid-template-columns:1fr 130px 90px 30px;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid var(--br)">
-        <div style="font-weight:600;font-size:12px;text-align:right;padding-right:6px;line-height:32px">TOTAL USD</div>
-        <input type="number" class="fc" id="pr-total_usd" readonly style="color:var(--grn);font-weight:700">
-        <div></div><div></div>
-      </div>
     </div>
 
-    <!-- Tipo cliente y cálculo -->
+    <!-- TOTALES Y TIPO CLIENTE -->
     <div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:7px;padding:11px;margin-top:10px">
-      <div style="font-size:10px;color:var(--org);font-weight:600;text-transform:uppercase;margin-bottom:8px">Costo Final por Ítem</div>
+      <div style="font-size:10px;color:var(--org);font-weight:600;text-transform:uppercase;margin-bottom:8px">Resumen y Costo Final</div>
       <div class="fg">
         <div class="fgrp"><label class="flbl">Tipo de Cliente</label>
           <select class="fc" id="pr-tipo_cli" onchange="calcPres()">
             <option value="importador">Importador (Responsable Inscripto)</option>
             <option value="no_importador">No Importador / Consumidor Final</option>
           </select></div>
-        <div class="fgrp"><label class="flbl">Alícuota IVA (si no importador)</label>
+        <div class="fgrp"><label class="flbl">Alícuota IVA (no importador)</label>
           <select class="fc" id="pr-iva_rate" onchange="calcPres()">
-            <option value="21">21%</option>
-            <option value="10.5">10.5%</option>
+            <option value="21">21%</option><option value="10.5">10.5%</option>
           </select></div>
-        <div class="fgrp"><label class="flbl" style="color:var(--org);font-weight:600">Costo Final x Ítem USD</label>
+        <div class="fgrp"><label class="flbl">TOTAL USD (todo incluido)</label>
+          <input type="number" class="fc" id="pr-total_usd" readonly style="color:var(--acc);font-weight:700"></div>
+        <div class="fgrp"><label class="flbl" style="color:var(--org);font-weight:600">COSTO FINAL x ÍTEM USD</label>
           <input type="number" class="fc" id="pr-costo_final" readonly style="color:var(--org);font-weight:700;font-size:14px"></div>
-      </div>
-      <div style="font-size:10px;color:var(--tx3);margin-top:6px">
-        Importador: excluye IVA de tributos (lo recuperan como crédito fiscal). No importador: mismo criterio neto.
       </div>
     </div>
 
-    <!-- Observaciones y estado -->
+    <!-- OBSERVACIONES -->
     <div class="fg" style="margin-top:10px">
-      <div class="fgrp fsp"><label class="flbl">Observaciones / Condiciones de pago</label>
-        <textarea class="fc" id="pr-observaciones" rows="3" placeholder="• Todos los gastos cotizados en USD...&#10;• Los pagos se realizan en dos partes..."></textarea></div>
+      <div class="fgrp" style="grid-column:1/-1"><label class="flbl">Observaciones / Condiciones de pago</label>
+        <textarea class="fc" id="pr-observaciones" rows="3"></textarea></div>
       <div class="fgrp"><label class="flbl">Estado</label>
         <select class="fc" id="pr-estado">
-          <option>Pendiente</option>
-          <option>Aprobado</option>
-          <option>Rechazado</option>
+          <option>Pendiente</option><option>Aprobado</option><option>Rechazado</option>
         </select></div>
     </div>
 
@@ -1546,6 +1649,5 @@ render('dash');
     <button class="btn bp" onclick="gPres()">💾 Guardar</button>
   </div>
 </div></div>
-
 </body>
 </html>
