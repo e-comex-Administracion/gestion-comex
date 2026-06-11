@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GestiónComex</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0f1117;--s1:#161922;--s2:#1e2330;--br:#2a3047;--acc:#4f9cf9;--grn:#22c55e;--red:#ef4444;--org:#f59e0b;--pur:#7c3aed;--tx:#e8eaf0;--tx2:#8b92a8;--tx3:#5a6178;--ff:'Inter',sans-serif;--fm:'JetBrains Mono',monospace}
@@ -93,6 +94,7 @@ textarea.fc{resize:vertical;min-height:52px}
   <div class="sbs"><div class="sbh">Principal</div>
     <button class="ni on" onclick="goTo('dash')"><span class="ic">📊</span>Dashboard</button></div>
   <div class="sbs"><div class="sbh">Operaciones</div>
+    <button class="ni" onclick="goTo('pres')"><span class="ic">📋</span>Presupuestos</button>
     <button class="ni" onclick="goTo('exps')"><span class="ic">📦</span>Expedientes</button>
     <button class="ni" onclick="goTo('fprov')"><span class="ic">🧾</span>Facturas Proveedores</button>
     <button class="ni" onclick="goTo('femit')"><span class="ic">📄</span>Facturas Emitidas</button></div>
@@ -122,7 +124,7 @@ textarea.fc{resize:vertical;min-height:52px}
 
 <script>
 // ═══ DATA ═══════════════════════════════════
-const KEYS=['tipos_gasto','proveedores','clientes','operaciones','facturas_prov','facturas_emit','pagos','cobranzas','tipo_cambio'];
+const KEYS=['tipos_gasto','proveedores','clientes','operaciones','facturas_prov','facturas_emit','pagos','cobranzas','tipo_cambio','presupuestos'];
 let D={},editIdx=-1,editTabla='',curPage='dash';
 function load(){KEYS.forEach(k=>{const v=localStorage.getItem('gc_'+k);D[k]=v?JSON.parse(v):[];});if(!KEYS.some(k=>D[k].length>0))initDemo();$('st').textContent='Sistema listo';}
 function save(k){localStorage.setItem('gc_'+k,JSON.stringify(D[k]));}
@@ -236,9 +238,9 @@ function oM(id){
 document.addEventListener('click',e=>{if(e.target.classList.contains('mo'))e.target.classList.remove('show');});
 
 // ═══ NAV ═════════════════════════════════════
-const PGS={dash:'Dashboard',exps:'Expedientes',fprov:'Facturas Proveedores',femit:'Facturas Emitidas',pagos:'Pagos',cobs:'Cobranzas',cheqs:'Cheques Pendientes',cashf:'Cash Flow',provs:'Proveedores',clis:'Clientes',tgas:'Tipos de Gasto',tc:'Tipo de Cambio',rent:'Rentabilidad',ccprov:'CC Proveedores',cccli:'CC Clientes',xport:'Exportar / Importar'};
+const PGS={dash:'Dashboard',pres:'Presupuestos',exps:'Expedientes',fprov:'Facturas Proveedores',femit:'Facturas Emitidas',pagos:'Pagos',cobs:'Cobranzas',cheqs:'Cheques Pendientes',cashf:'Cash Flow',provs:'Proveedores',clis:'Clientes',tgas:'Tipos de Gasto',tc:'Tipo de Cambio',rent:'Rentabilidad',ccprov:'CC Proveedores',cccli:'CC Clientes',xport:'Exportar / Importar'};
 function goTo(page){curPage=page;document.querySelectorAll('.ni').forEach(n=>n.classList.toggle('on',n.getAttribute('onclick').includes("'"+page+"'")));$('pgt').textContent=PGS[page]||page;$('tba').innerHTML='';render(page);}
-function render(page){const pg=$('pgc'),ac=$('tba');const fn={dash:rDash,exps:rExps,fprov:rFProv,femit:rFEmit,pagos:rPagos,cobs:rCobs,cheqs:rCheqs,cashf:rCashF,provs:rProvs,clis:rClis,tgas:rTgas,tc:rTC,rent:rRent,ccprov:rCCProv,cccli:rCCCli,xport:rXport};if(fn[page])fn[page](pg,ac);}
+function render(page){const pg=$('pgc'),ac=$('tba');const fn={dash:rDash,pres:rPres,exps:rExps,fprov:rFProv,femit:rFEmit,pagos:rPagos,cobs:rCobs,cheqs:rCheqs,cashf:rCashF,provs:rProvs,clis:rClis,tgas:rTgas,tc:rTC,rent:rRent,ccprov:rCCProv,cccli:rCCCli,xport:rXport};if(fn[page])fn[page](pg,ac);}
 
 // ═══ TABLE + STAT HELPERS ════════════════════
 function tbl(h,rows,msg='Sin registros'){if(!rows.length)return`<div class="es"><div class="ei">📭</div><p>${msg}</p></div>`;return`<div class="tw"><table><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;}
@@ -825,6 +827,454 @@ function gTC(){
   save('tipo_cambio');editIdx=-1;cM('m-tc');toast('TC guardado ✓');render('tc');
 }
 
+
+// ═══════════════════════════════════════════════════════════
+// PRESUPUESTOS MODULE
+// ═══════════════════════════════════════════════════════════
+
+// ── Numero auto ────────────────────────────────────────────
+function nextNroPres(){
+  if(!D.presupuestos||!D.presupuestos.length)return'PRES-'+new Date().getFullYear()+'-001';
+  const last=D.presupuestos[D.presupuestos.length-1].nro||'';
+  const m=last.match(/-(\d+)$/);
+  const next=m?String(parseInt(m[1])+1).padStart(3,'0'):'001';
+  return'PRES-'+new Date().getFullYear()+'-'+next;
+}
+
+// ── Render lista presupuestos ──────────────────────────────
+function rPres(pg,ac){
+  if(!D.presupuestos)D.presupuestos=[];
+  ac.innerHTML=`<button class="btn bp bs" onclick="abrirNuevoPres()">＋ Nuevo Presupuesto</button>`;
+  const stats={total:D.presupuestos.length,pend:D.presupuestos.filter(p=>p.estado==='Pendiente').length,apro:D.presupuestos.filter(p=>p.estado==='Aprobado').length,rech:D.presupuestos.filter(p=>p.estado==='Rechazado').length};
+  const eB2=e=>{const m={Pendiente:'bgo',Aprobado:'bgg',Rechazado:'bgr'};return`<span class="bg ${m[e]||'bgp'}">${e}</span>`;};
+  const rows=D.presupuestos.map((p,i)=>[
+    `<span class="tdc tdm" style="color:var(--acc)">${p.nro||'-'}</span>`,
+    `<span class="tdc">${fF(p.fecha)}</span>`,
+    `<span class="tdm">${p.cliente||'-'}</span>`,
+    p.rubro||'-',
+    `<span style="font-size:11px;color:var(--tx2)">${(p.producto||'-').substring(0,30)}</span>`,
+    p.total_usd?`<span class="tdc rp">USD ${fN(p.total_usd)}</span>`:'—',
+    eB2(p.estado||'Pendiente'),
+    `<div style="display:flex;gap:4px">
+      <button class="btn bg2 bs" onclick="editarPres(${i})" title="Editar">✏️</button>
+      ${(p.estado==='Pendiente')?`<button class="btn bgrn bs" onclick="aprobarPres(${i})" title="Aprobar → Expediente">✅</button><button class="btn bd bs" onclick="rechazarPres(${i})" title="Rechazar">✗</button>`:''}
+      <button class="btn bg2 bs" onclick="exportPresXPPT(${i})" title="Exportar PowerPoint">📊</button>
+      <button class="btn bd bs" onclick="del('presupuestos',${i})" title="Eliminar">🗑️</button>
+    </div>`
+  ]);
+  pg.innerHTML=sg([
+    {l:'Total',v:stats.total,c:'bl'},
+    {l:'Pendientes',v:stats.pend,c:'og'},
+    {l:'Aprobados',v:stats.apro,c:'gn'},
+    {l:'Rechazados',v:stats.rech,c:'pu'},
+  ])+`<div class="card"><div class="ch"><span class="cn">Presupuestos</span></div><div class="cb">
+    ${tbl(['Nro.','Fecha','Cliente','Rubro','Producto','Total USD','Estado','Acciones'],rows,'Sin presupuestos — creá el primero con + Nuevo Presupuesto')}
+  </div></div>`;
+}
+
+// ── Abrir modal para nuevo presupuesto ─────────────────────
+function abrirNuevoPres(){
+  editIdx=-1;editTabla='presupuestos';
+  if($('pr-nro'))$('pr-nro').value=nextNroPres();
+  if($('pr-fecha'))$('pr-fecha').value=new Date().toISOString().slice(0,10);
+  ['pr-cuit','pr-cliente','pr-rubro','pr-producto','pr-descripcion','pr-clasificacion','pr-pos_aran','pr-observaciones','pr-precio_usd','pr-precio_eur','pr-flete_origen','pr-flete_flete','pr-flete_destino','pr-seguro_suma','pr-seguro_monto','pr-honorarios','pr-desp_gastos','pr-desp_digit','pr-desp_otros'].forEach(id=>{if($(id))$(id).value='';});
+  setV('pr-seguro_prima','1');
+  setV('pr-ali_derechos','0');setV('pr-ali_estadistica','3');setV('pr-ali_iva','21');setV('pr-ali_iva_ad','10');setV('pr-ali_ganancias','6');setV('pr-ali_iibb','3');
+  setV('pr-banc_comision','6');setV('pr-banc_swift','50');setV('pr-banc_exterior','15');
+  setV('pr-arancel_sim','10.00');
+  if($('pr-incoterm'))$('pr-incoterm').value='EXW';
+  if($('pr-flete_tipo'))$('pr-flete_tipo').value='Marítimo';
+  if($('pr-cantidad'))$('pr-cantidad').value=1;
+  
+  if($('pr-estado'))$('pr-estado').value='Pendiente';
+  if($('pr-tipo_cli'))$('pr-tipo_cli').value='importador';
+  
+  presInitCostos([{concepto:'Gastos de depósito y portuarios',monto:'',es_iva:false},{concepto:'Transporte territorio nacional',monto:'',es_iva:false}]);
+  calcPres();
+  oM('m-pres');
+}
+
+// ── Editar presupuesto existente ───────────────────────────
+function editarPres(i){
+  editIdx=i;editTabla='presupuestos';
+  const p=D.presupuestos[i];
+  if(!p)return;
+  const flds={nro:p.nro,fecha:p.fecha,cuit:p.cuit,cliente:p.cliente,rubro:p.rubro,producto:p.producto,descripcion:p.descripcion,clasificacion:p.clasificacion,pos_aran:p.pos_aran,cantidad:p.cantidad||1,precio_usd:p.precio_usd||p.exw_usd||'',precio_eur:p.precio_eur||p.exw_eur||'',observaciones:p.observaciones||'',estado:p.estado||'Pendiente',flete_origen:p.flete_origen||'',flete_flete:p.flete_flete||'',flete_destino:p.flete_destino||'',seguro_suma:p.seguro_suma||'',seguro_prima:p.seguro_prima||'',seguro_monto:p.seguro||'',ali_derechos:p.ali_derechos||'',ali_estadistica:p.ali_estadistica||'',ali_iva:p.ali_iva||'',ali_iva_ad:p.ali_iva_ad||'',ali_ganancias:p.ali_ganancias||'',ali_iibb:p.ali_iibb||'',banc_comision:p.banc_comision||'',banc_swift:p.banc_swift||'',banc_exterior:p.banc_exterior||'',honorarios:p.honorarios||'',desp_gastos:p.desp_gastos||'',desp_digit:p.desp_digit||'',desp_otros:p.desp_otros||''};
+  Object.entries(flds).forEach(([k,val])=>{if($('pr-'+k))$('pr-'+k).value=val||'';});
+  if($('pr-incoterm'))$('pr-incoterm').value=p.incoterm||'EXW';
+  if($('pr-flete_tipo'))$('pr-flete_tipo').value=p.flete_tipo||'Marítimo';
+  if($('pr-tipo_cli'))$('pr-tipo_cli').value=p.es_importador===false?'no_importador':'importador';
+  if($('pr-arancel_sim'))$('pr-arancel_sim').value='10.00';
+  presInitCostos(p.otros_costos||p.costos||[]);
+  calcPres();
+  oM('m-pres');
+}
+
+// ── Init costos dinámicos ──────────────────────────────────
+function presInitCostos(costos){
+  const cont=$('pr-costos-rows');
+  if(!cont)return;
+  cont.innerHTML='';
+  costos.forEach((c,i)=>presAddRow(c,i));
+  presUpdateRowIds();
+}
+
+function presAddRow(c,i){
+  const cont=$('pr-costos-rows');if(!cont)return;
+  const div=document.createElement('div');
+  div.className='pres-costo-row';
+  div.style.cssText='display:grid;grid-template-columns:1fr 130px 90px 30px;gap:7px;align-items:center;margin-bottom:6px';
+  div.innerHTML=`
+    <input class="fc" placeholder="Concepto" value="${c.concepto||''}" style="font-size:12px">
+    <input class="fc" type="number" placeholder="USD" value="${c.monto||''}" oninput="calcPres()" style="font-size:12px">
+    <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--org);cursor:pointer">
+      <input type="checkbox" ${c.es_iva?'checked':''} onchange="calcPres()" style="accent-color:var(--org)"> IVA
+    </label>
+    <button class="btn bd bs" onclick="this.closest('.pres-costo-row').remove();calcPres()" style="padding:4px 7px">×</button>`;
+  cont.appendChild(div);
+}
+
+function presUpdateRowIds(){}
+
+function presGetCostos(){
+  const rows=document.querySelectorAll('.pres-costo-row');
+  return Array.from(rows).map(row=>{
+    const inputs=row.querySelectorAll('input');
+    return{concepto:inputs[0].value,monto:parseFloat(inputs[1].value)||0,es_iva:inputs[2].checked};
+  });
+}
+
+// ── Calcular totales ───────────────────────────────────────
+function nv(id){return parseFloat(v(id))||0;}
+function setV(id,val){if($(id))$(id).value=val;}
+function setT(id,txt){if($(id))$(id).textContent=txt;}
+function calcPres(){
+  const esImportador=v('pr-tipo_cli')!=='no_importador';
+  const precioUSD=nv('pr-precio_usd');
+  // ── Flete: solo el flete internacional integra el VI ──
+  const fleteOrigen=nv('pr-flete_origen'),fleteFlete=nv('pr-flete_flete'),fleteDestino=nv('pr-flete_destino');
+  const totalFlete=fleteOrigen+fleteFlete+fleteDestino;
+  setT('pr-total-flete-disp','USD '+fN(totalFlete));
+  // ── Seguro: prima% sobre suma asegurable (default = precio), o monto directo ──
+  const sumaAseg=nv('pr-seguro_suma')||precioUSD;
+  const prima=nv('pr-seguro_prima');
+  let seguro=nv('pr-seguro_monto');
+  if(prima>0){seguro=sumaAseg*prima/100;setV('pr-seguro_monto',seguro.toFixed(2));}
+  // ── Valor Imponible (Excel): VI = Precio + Flete Internacional + Seguro ──
+  const vi=precioUSD+fleteFlete+seguro;
+  setV('pr-vi',vi.toFixed(2));
+  // ── Tributos sobre VI ──
+  const derechos=vi*nv('pr-ali_derechos')/100;
+  const estad=vi*nv('pr-ali_estadistica')/100;
+  // ── Base IVA (Excel): VI + Derechos + Estadística ──
+  const baseIVA=vi+derechos+estad;
+  setV('pr-base_iva',baseIVA.toFixed(2));
+  // ── Tributos sobre Base IVA ──
+  const iva=baseIVA*nv('pr-ali_iva')/100;
+  const ivaAd=baseIVA*nv('pr-ali_iva_ad')/100;
+  const gan=baseIVA*nv('pr-ali_ganancias')/100;
+  const iibb=baseIVA*nv('pr-ali_iibb')/100;
+  const sim=10;
+  setV('pr-derechos',derechos.toFixed(2));
+  setV('pr-tasa_est',estad.toFixed(2));
+  setV('pr-iva_aduana',iva.toFixed(2));
+  setV('pr-iva_adicional',ivaAd.toFixed(2));
+  setV('pr-ganancias',gan.toFixed(2));
+  setV('pr-iibb',iibb.toFixed(2));
+  const totalTrib=derechos+estad+iva+ivaAd+gan+iibb+sim;
+  setT('pr-total-trib-disp','USD '+fN(totalTrib));
+  // ── Bancario (Excel): comisión% sobre precio + Swift + Exterior ──
+  const bancario=precioUSD*nv('pr-banc_comision')/100+nv('pr-banc_swift')+nv('pr-banc_exterior');
+  setV('pr-banc_total',bancario.toFixed(2));
+  // ── Despachante (Excel): Honorarios + Gastos Op + Digitalización + Otros ──
+  const honorarios=nv('pr-honorarios');
+  const despTotal=honorarios+nv('pr-desp_gastos')+nv('pr-desp_digit')+nv('pr-desp_otros');
+  setT('pr-total-desp-disp','USD '+fN(despTotal));
+  // ── Otros costos dinámicos ──
+  const otros=presGetCostos();
+  const totalOtros=otros.reduce((a,c)=>a+(c.monto||0),0);
+  // ── Total erogación (Excel: FOB + Comex + Aduana) ──
+  const totalUSD=precioUSD+totalFlete+seguro+totalTrib+bancario+despTotal+totalOtros;
+  setV('pr-total_usd',totalUSD.toFixed(2));
+  // ── Costo Final: RI descuenta recuperables (IVA+IVAAd+Gan+IIBB+SIM) ──
+  const recuperables=iva+ivaAd+gan+iibb+sim;
+  setT('pr-recup-disp',esImportador?('Recuperables: − USD '+fN(recuperables)):'No importador: sin recupero');
+  const costoFinal=esImportador?totalUSD-recuperables:totalUSD;
+  setV('pr-costo_final',costoFinal.toFixed(2));
+  const qty=nv('pr-cantidad')||1;
+  setV('pr-costo_unit',(costoFinal/qty).toFixed(2));
+}
+
+// ── Buscar/crear cliente por CUIT ──────────────────────────
+function buscarCliPres(cuit){
+  cuit=cuit.trim();
+  if(!cuit)return;
+  const cli=D.clientes.find(c=>c.cuit===cuit);
+  if(cli){
+    if($('pr-cliente'))$('pr-cliente').value=cli.razon;
+    toast('Cliente encontrado: '+cli.razon);
+  }else{
+    if($('pr-cliente'))$('pr-cliente').value='';
+    if($('pr-nuevo-cli-banner'))$('pr-nuevo-cli-banner').style.display='block';
+  }
+}
+
+// ── Guardar presupuesto ────────────────────────────────────
+function gPres(){
+  const nro=v('pr-nro').trim();
+  if(!nro){toast('El número de presupuesto es obligatorio','er');return;}
+  calcPres();
+  const costos=presGetCostos();
+  const incoterm=v('pr-incoterm')||'EXW';
+  const precioUSD=parseFloat(v('pr-precio_usd'))||0;
+  const precioEUR=parseFloat(v('pr-precio_eur'))||0;
+  const totalUSD=parseFloat(v('pr-total_usd'))||0;
+  const costoFinal=parseFloat(v('pr-costo_final'))||0;
+  const honorarios=parseFloat(v('pr-honorarios'))||0;
+  const cuit=v('pr-cuit').trim();
+  const clienteRazon=v('pr-cliente').trim();
+  // Auto-crear cliente si CUIT nuevo
+  if(cuit&&clienteRazon){
+    const existe=D.clientes.find(c=>c.cuit===cuit);
+    if(!existe){
+      const newCli={id:nid(D.clientes),razon:clienteRazon,cuit,iva:'Responsable Inscripto',contacto:'',tel:'',email:'',rubro:v('pr-rubro')||'',cpago:'30 días',moneda:'USD',activo:'SI',notas:'Alta automática desde presupuesto '+nro};
+      D.clientes.push(newCli);save('clientes');
+      toast('Cliente creado automáticamente: '+clienteRazon);
+    }
+  }
+  const pres={
+    id:editIdx>=0?D.presupuestos[editIdx].id:nid(D.presupuestos||[]),
+    nro,fecha:v('pr-fecha'),cuit,cliente:clienteRazon,
+    rubro:v('pr-rubro'),producto:v('pr-producto'),
+    descripcion:v('pr-descripcion'),clasificacion:v('pr-clasificacion'),
+    pos_aran:v('pr-pos_aran'),cantidad:parseFloat(v('pr-cantidad'))||1,
+    incoterm,precio_usd:precioUSD,precio_eur:precioEUR,
+    flete_tipo:v('pr-flete_tipo')||'Marítimo',
+    flete_origen:nv('pr-flete_origen'),flete_flete:nv('pr-flete_flete'),flete_destino:nv('pr-flete_destino'),
+    seguro_suma:nv('pr-seguro_suma'),seguro_prima:nv('pr-seguro_prima'),seguro:nv('pr-seguro_monto'),
+    ali_derechos:nv('pr-ali_derechos'),ali_estadistica:nv('pr-ali_estadistica'),ali_iva:nv('pr-ali_iva'),ali_iva_ad:nv('pr-ali_iva_ad'),ali_ganancias:nv('pr-ali_ganancias'),ali_iibb:nv('pr-ali_iibb'),
+    vi:nv('pr-vi'),base_iva:nv('pr-base_iva'),
+    derechos:nv('pr-derechos'),tasa_est:nv('pr-tasa_est'),iva_aduana:nv('pr-iva_aduana'),iva_adicional:nv('pr-iva_adicional'),ganancias:nv('pr-ganancias'),iibb:nv('pr-iibb'),arancel_sim:10,
+    banc_comision:nv('pr-banc_comision'),banc_swift:nv('pr-banc_swift'),banc_exterior:nv('pr-banc_exterior'),bancario:nv('pr-banc_total'),
+    honorarios,desp_gastos:nv('pr-desp_gastos'),desp_digit:nv('pr-desp_digit'),desp_otros:nv('pr-desp_otros'),
+    otros_costos:costos,
+    total_usd:nv('pr-total_usd'),costo_final:nv('pr-costo_final'),
+    es_importador:v('pr-tipo_cli')!=='no_importador',
+    observaciones:v('pr-observaciones'),
+    estado:v('pr-estado')||'Pendiente',
+    op_id:editIdx>=0?(D.presupuestos[editIdx].op_id||null):null,
+  };
+  if(!D.presupuestos)D.presupuestos=[];
+  if(editIdx>=0)D.presupuestos[editIdx]=pres;else D.presupuestos.push(pres);
+  save('presupuestos');editIdx=-1;
+  cM('m-pres');toast('Presupuesto guardado ✓');
+  render('pres');
+}
+
+// ── Aprobar presupuesto → crear expediente ─────────────────
+function aprobarPres(i){
+  const p=D.presupuestos[i];
+  if(!p)return;
+  if(!confirm('¿Aprobar el presupuesto '+p.nro+' y convertirlo en expediente activo?'))return;
+  // Find or create client
+  const cli=D.clientes.find(c=>c.cuit===p.cuit)||D.clientes.find(c=>c.razon===p.cliente)||{id:0,razon:p.cliente};
+  // Create expediente
+  const op={
+    id:nid(D.operaciones),
+    exp:p.nro.replace('PRES','EXP'),
+    cli_id:cli.id,cliente:cli.razon||p.cliente,
+    merc:p.producto+(p.descripcion?' — '+p.descripcion.substring(0,50):''),
+    pais:'',tipo:v('pr-estado')||'Importación Definitiva para Consumo',
+    f_ap:new Date().toISOString().slice(0,10),f_cl:'',estado:'EN TRAMITE',
+    tc:lTC(),hon_usd:p.honorarios||0,hon_ars:0,
+    importe_ref:p.costo_final||p.total_usd||0,moneda_ref:'USD',
+    f_cobro_est:'',notas:'Generado desde presupuesto '+p.nro,
+  };
+  D.operaciones.push(op);save('operaciones');
+  // Update presupuesto
+  D.presupuestos[i].estado='Aprobado';
+  D.presupuestos[i].op_id=op.id;
+  save('presupuestos');
+  toast('Presupuesto aprobado → Expediente '+op.exp+' creado ✓');
+  render('pres');
+}
+
+function rechazarPres(i){
+  if(!confirm('¿Rechazar este presupuesto?'))return;
+  D.presupuestos[i].estado='Rechazado';
+  save('presupuestos');toast('Presupuesto rechazado');render('pres');
+}
+
+// ── EXPORTAR POWERPOINT ────────────────────────────────────
+function exportPresXPPT(i){
+  const p=D.presupuestos[i];
+  if(!p){toast('Presupuesto no encontrado','er');return;}
+  loadPptxLib(()=>_doPPT(i));
+}
+function loadPptxLib(cb){
+  if(typeof PptxGenJS!=='undefined'){cb();return;}
+  const s=document.createElement('script');
+  s.src='https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js';
+  s.onload=()=>{if(typeof PptxGenJS!=='undefined')cb();else{toast('Error al cargar librería PPT','er');}};
+  s.onerror=()=>toast('No se pudo cargar la librería PowerPoint','er');
+  document.head.appendChild(s);
+}
+function _doPPT(i){
+  const p=D.presupuestos[i];
+  if(!p){toast('Presupuesto no encontrado','er');return;}
+  const prs=new PptxGenJS();
+  prs.layout='LAYOUT_16x9';
+  const BG='0D1B2A',BG2='112031',ACC='1A6BAE',ACC2='1B8FD8',WHT='FFFFFF',GRY='B8C8DC',YEL='F4A623',DRK='07111C';
+  const fBase={fontFace:'Calibri',color:WHT};
+  const fSub={fontFace:'Calibri',color:GRY};
+  // ── Slide 1: Portada ─────────────────────────────────────
+  const s1=prs.addSlide();s1.background={color:BG};
+  s1.addShape(prs.shapes.RECTANGLE,{x:0,y:0,w:10,h:1.3,fill:{color:DRK}});
+  s1.addText('E-COMEX',{x:0.4,y:0.18,w:5,h:0.65,fontFace:'Calibri',fontSize:32,bold:true,color:WHT});
+  s1.addText('La Evolución del Comercio Exterior',{x:0.4,y:0.72,w:7,h:0.4,fontFace:'Calibri',fontSize:13,italic:true,color:GRY});
+  s1.addShape(prs.shapes.RECTANGLE,{x:0,y:1.3,w:10,h:0.04,fill:{color:ACC}});
+  s1.addText((p.rubro||'').toUpperCase(),{x:0.4,y:1.7,w:9,h:0.4,...fSub,fontSize:11,charSpacing:3});
+  s1.addText(p.producto||'',{x:0.4,y:2.15,w:9,h:0.9,...fBase,fontSize:28,bold:true});
+  s1.addText(p.cliente||'',{x:0.4,y:3.1,w:9,h:0.45,...fBase,fontSize:18,color:ACC2});
+  s1.addShape(prs.shapes.RECTANGLE,{x:0.4,y:3.65,w:1.8,h:0.04,fill:{color:ACC}});
+  const mes=p.fecha?['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][parseInt(p.fecha.split('-')[1])-1]+' '+p.fecha.split('-')[0]:'';
+  s1.addText(mes,{x:0.4,y:3.8,w:4,h:0.35,...fSub,fontSize:13});
+  s1.addText(p.nro||'',{x:6.5,y:3.8,w:3,h:0.35,fontFace:'Calibri',fontSize:12,color:ACC2,align:'right'});
+  s1.addShape(prs.shapes.RECTANGLE,{x:0,y:5.0,w:10,h:0.625,fill:{color:DRK}});
+  s1.addText('info@e-comex.com.ar',{x:0.4,y:5.1,w:3,h:0.35,...fSub,fontSize:10});
+  s1.addText('www.e-comex.com.ar',{x:3.5,y:5.1,w:3,h:0.35,...fSub,fontSize:10,align:'center'});
+  s1.addText('Av. Julio Argentino Roca 771 6-10 | C.A.B.A.',{x:6.0,y:5.1,w:3.7,h:0.35,...fSub,fontSize:10,align:'right'});
+  // ── Slide 2: Descripción del Producto ────────────────────
+  const s2=prs.addSlide();s2.background={color:BG};
+  s2.addShape(prs.shapes.RECTANGLE,{x:0,y:0,w:10,h:0.9,fill:{color:DRK}});
+  s2.addText('DESCRIPCIÓN DEL PRODUCTO',{x:0.4,y:0.15,w:9,h:0.55,fontFace:'Calibri',fontSize:10,color:GRY,charSpacing:3});
+  s2.addText(p.producto||'',{x:0.4,y:1.0,w:9,h:0.65,...fBase,fontSize:22,bold:true});
+  s2.addShape(prs.shapes.RECTANGLE,{x:0.4,y:1.75,w:9.2,h:0.04,fill:{color:ACC}});
+  s2.addText('Rubro: '+(p.rubro||''),{x:0.4,y:1.9,w:9,h:0.3,...fSub,fontSize:12});
+  if(p.descripcion){s2.addText(p.descripcion,{x:0.4,y:2.3,w:9,h:1.2,...fBase,fontSize:12,color:GRY,wrap:true});}
+  s2.addText('Las imágenes pueden diferir levemente respecto del producto final.',{x:0.4,y:3.7,w:9,h:0.3,fontFace:'Calibri',fontSize:10,italic:true,color:GRY});
+  if(p.clasificacion){
+    s2.addShape(prs.shapes.ROUNDED_RECTANGLE,{x:0.4,y:4.1,w:9.2,h:0.85,fill:{color:BG2},rectRadius:0.08});
+    s2.addText(p.clasificacion.substring(0,180),{x:0.6,y:4.15,w:8.8,h:0.75,fontFace:'Calibri',fontSize:10,color:GRY,wrap:true});
+  }
+  if(p.pos_aran){s2.addText('Posición Arancelaria: '+p.pos_aran,{x:0.4,y:5.1,w:9,h:0.3,fontFace:'Calibri',fontSize:11,color:YEL,bold:true});}
+  // ── Slide 3: Desglose de Costos ───────────────────────────
+  const s3=prs.addSlide();s3.background={color:BG};
+  s3.addShape(prs.shapes.RECTANGLE,{x:0,y:0,w:10,h:0.9,fill:{color:DRK}});
+  s3.addText('DESGLOSE DE COSTOS',{x:0.4,y:0.22,w:9,h:0.5,fontFace:'Calibri',fontSize:10,color:GRY,charSpacing:3});
+  const costos=p.costos||[];
+  const rows3=[];
+  // Header
+  rows3.push([
+    {text:'Concepto',options:{bold:true,fill:{color:ACC},color:WHT,fontFace:'Calibri',fontSize:11}},
+    {text:'Importe USD',options:{bold:true,fill:{color:ACC},color:WHT,fontFace:'Calibri',fontSize:11,align:'right'}},
+    {text:'Obs.',options:{bold:true,fill:{color:ACC},color:WHT,fontFace:'Calibri',fontSize:11,align:'center'}},
+  ]);
+  // Precio del producto row
+  const inco=p.incoterm||'EXW';
+  const precioLabel=inco+': '+(p.precio_eur?'EUR '+fN(p.precio_eur)+' | ':'')+'USD '+fN(p.precio_usd);
+  rows3.push([
+    {text:precioLabel,options:{fontFace:'Calibri',fontSize:11,color:WHT,fill:{color:BG2}}},
+    {text:'USD '+fN(p.precio_usd||p.exw_usd),options:{fontFace:'Calibri',fontSize:11,color:YEL,bold:true,align:'right',fill:{color:BG2}}},
+    {text:'',options:{fill:{color:BG2}}},
+  ]);
+  // Flete
+  const ftipo=p.flete_tipo||'Marítimo';
+  const ftotal=(p.flete_origen||0)+(p.flete_flete||0)+(p.flete_destino||0);
+  if(ftotal>0){
+    [[('Flete '+ftipo+' — Gastos en Origen'),(p.flete_origen||0),false],[('Flete '+ftipo),(p.flete_flete||0),false],[('Gastos en Destino'),(p.flete_destino||0),false]].forEach(([lbl,monto,isIva],idx)=>{
+      if(monto>0){const bg=idx%2===0?BG:BG2;rows3.push([{text:lbl,options:{fontFace:'Calibri',fontSize:11,color:WHT,fill:{color:bg}}},{text:'USD '+fN(monto),options:{fontFace:'Calibri',fontSize:11,color:WHT,align:'right',fill:{color:bg}}},{text:'',options:{fill:{color:bg}}}]);}
+    });
+  }
+  // Seguro
+  if(p.seguro>0){rows3.push([{text:'Seguro Internacional',options:{fontFace:'Calibri',fontSize:11,color:WHT,fill:{color:BG}}},{text:'USD '+fN(p.seguro),options:{fontFace:'Calibri',fontSize:11,color:WHT,align:'right',fill:{color:BG}}},{text:'',options:{fill:{color:BG}}}]);}
+  // Tributos
+  const tribItems=[[('Derechos de Importación'),(p.derechos||0),false],[('Tasa de Estadísticas'),(p.tasa_est||0),false],[('IVA Aduanero'),(p.iva_aduana||0),true],[('IVA Adicional'),(p.iva_adicional||0),true],[('Imp. a las Ganancias'),(p.ganancias||0),true],[('Ingresos Brutos'),(p.iibb||0),true],[('Arancel SIM'),10,false]];
+  tribItems.forEach(([lbl,monto,recup],idx)=>{
+    if(monto>0){const bg=idx%2===0?BG:BG2;const marca=(recup&&p.es_importador!==false)?'Rec.':'';rows3.push([{text:lbl,options:{fontFace:'Calibri',fontSize:11,color:WHT,fill:{color:bg}}},{text:'USD '+fN(monto),options:{fontFace:'Calibri',fontSize:11,color:recup?YEL:WHT,align:'right',fill:{color:bg}}},{text:marca,options:{fontFace:'Calibri',fontSize:9,italic:true,color:YEL,align:'center',fill:{color:bg}}}]);}
+  });
+  // Honorarios
+  if(p.honorarios>0){rows3.push([{text:'Honorarios E-COMEX',options:{fontFace:'Calibri',fontSize:11,color:WHT,fill:{color:BG2},bold:true}},{text:'USD '+fN(p.honorarios),options:{fontFace:'Calibri',fontSize:11,color:WHT,align:'right',fill:{color:BG2},bold:true}},{text:'',options:{fill:{color:BG2}}}]);}
+  const despGastos=(p.desp_gastos||0)+(p.desp_digit||0)+(p.desp_otros||0);
+  if(despGastos>0){rows3.push([{text:'Gastos operativos despachante y digitalización',options:{fontFace:'Calibri',fontSize:11,color:WHT,fill:{color:BG}}},{text:'USD '+fN(despGastos),options:{fontFace:'Calibri',fontSize:11,color:WHT,align:'right',fill:{color:BG}}},{text:'',options:{fill:{color:BG}}}]);}
+  if(p.bancario>0){rows3.push([{text:'Gastos de transferencia internacional',options:{fontFace:'Calibri',fontSize:11,color:WHT,fill:{color:BG2}}},{text:'USD '+fN(p.bancario),options:{fontFace:'Calibri',fontSize:11,color:WHT,align:'right',fill:{color:BG2}}},{text:'',options:{fill:{color:BG2}}}]);}
+  // Otros costos
+  const otrosCostos=p.otros_costos||p.costos||[];
+  otrosCostos.forEach((c,idx)=>{
+    const bg=idx%2===0?BG:BG2;
+    rows3.push([
+      {text:c.concepto||'',options:{fontFace:'Calibri',fontSize:11,color:WHT,fill:{color:bg}}},
+      {text:'USD '+fN(c.monto),options:{fontFace:'Calibri',fontSize:11,color:WHT,align:'right',fill:{color:bg}}},
+      {text:c.es_iva?'IVA':'',options:{fontFace:'Calibri',fontSize:9,color:YEL,align:'center',fill:{color:bg}}},
+    ]);
+  });
+  // Total row
+  rows3.push([
+    {text:'TOTAL',options:{bold:true,fill:{color:BG2},color:WHT,fontFace:'Calibri',fontSize:12}},
+    {text:'USD '+fN(p.total_usd),options:{bold:true,fill:{color:BG2},color:YEL,fontFace:'Calibri',fontSize:13,align:'right'}},
+    {text:'IVA incluido',options:{fontFace:'Calibri',fontSize:9,italic:true,color:GRY,fill:{color:BG2}}},
+  ]);
+  const nRows=rows3.length;
+  const tableH=Math.min(0.3*nRows,3.8);
+  s3.addTable(rows3,{x:0.4,y:1.1,w:9.2,h:tableH,colW:[5.8,2.2,1.2],border:{pt:0.5,color:'1A3A5C'}});
+  // ── Slide 4: Tabla de Ítems ──────────────────────────────
+  const s4=prs.addSlide();s4.background={color:BG};
+  s4.addShape(prs.shapes.RECTANGLE,{x:0,y:0,w:10,h:0.9,fill:{color:DRK}});
+  s4.addText('RESUMEN POR ÍTEM',{x:0.4,y:0.22,w:9,h:0.5,fontFace:'Calibri',fontSize:10,color:GRY,charSpacing:3});
+  const qty=p.cantidad||1;
+  const cfItem=p.costo_final||0;
+  const cfUnit=qty>1?(cfItem/qty):cfItem;
+  const rows4=[
+    [
+      {text:'Ítem',options:{bold:true,fill:{color:ACC},color:WHT,fontFace:'Calibri',fontSize:11}},
+      {text:'Cantidad',options:{bold:true,fill:{color:ACC},color:WHT,fontFace:'Calibri',fontSize:11,align:'center'}},
+      {text:'Precio EUR EXW',options:{bold:true,fill:{color:ACC},color:WHT,fontFace:'Calibri',fontSize:11,align:'right'}},
+      {text:'Costo Final USD',options:{bold:true,fill:{color:ACC},color:WHT,fontFace:'Calibri',fontSize:11,align:'right'}},
+      {text:'Costo Unit. USD',options:{bold:true,fill:{color:ACC},color:WHT,fontFace:'Calibri',fontSize:11,align:'right'}},
+    ],
+    [
+      {text:p.producto||'',options:{fontFace:'Calibri',fontSize:11,color:WHT,fill:{color:BG2}}},
+      {text:String(qty),options:{fontFace:'Calibri',fontSize:11,color:WHT,align:'center',fill:{color:BG2}}},
+      {text:p.precio_eur?'EUR '+fN(p.precio_eur):(p.exw_eur?'EUR '+fN(p.exw_eur):'—'),options:{fontFace:'Calibri',fontSize:11,color:GRY,align:'right',fill:{color:BG2}}},
+      {text:'USD '+fN(cfItem),options:{fontFace:'Calibri',fontSize:12,color:YEL,bold:true,align:'right',fill:{color:BG2}}},
+      {text:'USD '+fN(cfUnit),options:{fontFace:'Calibri',fontSize:12,color:YEL,bold:true,align:'right',fill:{color:BG2}}},
+    ],
+    [
+      {text:'TOTAL',options:{bold:true,fill:{color:DRK},color:WHT,fontFace:'Calibri',fontSize:12}},
+      {text:String(qty),options:{fontFace:'Calibri',fontSize:11,color:WHT,align:'center',fill:{color:DRK}}},
+      {text:p.precio_eur?'EUR '+fN(p.precio_eur):(p.exw_eur?'EUR '+fN(p.exw_eur):'—'),options:{fontFace:'Calibri',fontSize:11,color:GRY,align:'right',fill:{color:DRK}}},
+      {text:'USD '+fN(cfItem),options:{fontFace:'Calibri',fontSize:13,color:YEL,bold:true,align:'right',fill:{color:DRK}}},
+      {text:'USD '+fN(cfUnit),options:{fontFace:'Calibri',fontSize:13,color:YEL,bold:true,align:'right',fill:{color:DRK}}},
+    ],
+  ];
+  s4.addTable(rows4,{x:0.4,y:1.2,w:9.2,h:1.3,colW:[3.5,1.1,1.8,1.9,1.9],border:{pt:0.5,color:'1A3A5C'}});
+  // tipo cliente badge
+  const tipoLabel=p.es_importador!==false?'Importador (Responsable Inscripto)':'No Importador';
+  const tipoColor=p.es_importador!==false?ACC2:YEL;
+  s4.addShape(prs.shapes.ROUNDED_RECTANGLE,{x:0.4,y:2.75,w:4.5,h:0.5,fill:{color:BG2},rectRadius:0.07});
+  s4.addText('Tipo de cliente: '+tipoLabel,{x:0.6,y:2.82,w:4.2,h:0.35,fontFace:'Calibri',fontSize:11,color:tipoColor});
+  if(p.es_importador===false){s4.addText('Alícuota IVA: '+(p.ali_iva||21)+'%',{x:5.2,y:2.82,w:2.5,h:0.35,fontFace:'Calibri',fontSize:11,color:YEL});}
+  s4.addText('Rubro: '+(p.rubro||'')+' | Producto: '+(p.producto||''),{x:0.4,y:3.4,w:9.2,h:0.3,...fSub,fontSize:10});
+  // ── Slide 5: Observaciones ───────────────────────────────
+  const s5=prs.addSlide();s5.background={color:BG};
+  s5.addShape(prs.shapes.RECTANGLE,{x:0,y:0,w:10,h:0.9,fill:{color:DRK}});
+  s5.addText('OBSERVACIONES',{x:0.4,y:0.22,w:9,h:0.5,fontFace:'Calibri',fontSize:10,color:GRY,charSpacing:3});
+  s5.addText('Rubro: '+(p.rubro||'')+' | Producto: '+(p.producto||''),{x:0.4,y:1.05,w:9,h:0.35,...fSub,fontSize:11});
+  const obs=p.observaciones||'';
+  if(obs){
+    const lines=obs.split('\n').filter(l=>l.trim());
+    const rich=lines.map((l,idx)=>({text:l.replace(/^[•\-]/,'').trim(),options:{bullet:idx<lines.length-1?{breakLine:true}:true,fontFace:'Calibri',fontSize:12,color:GRY}}));
+    s5.addText(rich,{x:0.4,y:1.5,w:9.2,h:3.2,wrap:true});
+  }
+  s5.addShape(prs.shapes.RECTANGLE,{x:0,y:5.0,w:10,h:0.625,fill:{color:DRK}});
+  s5.addText('info@e-comex.com.ar',{x:0.4,y:5.1,w:3,h:0.35,...fSub,fontSize:10});
+  s5.addText('www.e-comex.com.ar',{x:3.5,y:5.1,w:3,h:0.35,...fSub,fontSize:10,align:'center'});
+  s5.addText('Av. Julio Argentino Roca 771 6-10 | C.A.B.A.',{x:6.0,y:5.1,w:3.7,h:0.35,...fSub,fontSize:10,align:'right'});
+  const fname='EComex_Presupuesto_'+(p.nro||'').replace(/[^a-zA-Z0-9]/g,'_')+'_'+(p.cliente||'').replace(/\s+/g,'_').substring(0,20)+'.pptx';
+  prs.writeFile({fileName:fname});
+  toast('PowerPoint exportado ✓');
+}
+
 // ═══ INIT ════════════════════════════════════
 load();
 render('dash');
@@ -1071,5 +1521,213 @@ render('dash');
   <div class="mf"><button class="btn bg2" onclick="cM('m-tc')">Cancelar</button><button class="btn bp" onclick="gTC()">💾 Guardar</button></div>
 </div></div>
 
+
+<!-- ═══ MODAL PRESUPUESTO ═══════════════════════════════════ -->
+<div class="mo" id="m-pres"><div class="md" style="max-width:840px">
+  <div class="mh"><span class="mt">Presupuesto / Cotización</span><button class="xb" onclick="cM('m-pres')">×</button></div>
+  <div class="mb">
+
+    <!-- 1. TIPO DE CLIENTE — PRIMERO, DEFINE EL CÁLCULO -->
+    <div style="background:rgba(26,143,216,.1);border:2px solid var(--acc);border-radius:8px;padding:12px">
+      <div style="font-size:10px;color:var(--acc);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Tipo de Cliente — define el cálculo del costo final</div>
+      <select class="fc" id="pr-tipo_cli" onchange="calcPres()" style="font-weight:600">
+        <option value="importador">IMPORTADOR (Resp. Inscripto) — recupera IVA, IVA Adic., Ganancias, IIBB y SIM</option>
+        <option value="no_importador">NO IMPORTADOR — el costo final incluye todos los tributos</option>
+      </select>
+    </div>
+
+    <div class="fg" style="margin-top:10px">
+      <div class="fgrp"><label class="flbl">Nro. Presupuesto</label><input class="fc" id="pr-nro" placeholder="PRES-2026-001"></div>
+      <div class="fgrp"><label class="flbl">Fecha</label><input type="date" class="fc" id="pr-fecha"></div>
+    </div>
+
+    <!-- CLIENTE -->
+    <div style="background:rgba(79,156,249,.06);border:1px solid rgba(79,156,249,.2);border-radius:7px;padding:11px;margin-top:10px">
+      <div style="font-size:10px;color:var(--acc);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Cliente</div>
+      <div class="fg">
+        <div class="fgrp"><label class="flbl">CUIT</label><input class="fc" id="pr-cuit" placeholder="30-12345678-9" onblur="buscarCliPres(this.value)"></div>
+        <div class="fgrp"><label class="flbl">Razón Social</label><input class="fc" id="pr-cliente" placeholder="Se completa al cargar CUIT o ingresá manualmente"></div>
+      </div>
+      <div id="pr-nuevo-cli-banner" style="display:none;margin-top:8px;padding:8px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:6px;font-size:11px;color:var(--org)">
+        ⚠️ CUIT no encontrado — al guardar se creará automáticamente como nuevo cliente
+      </div>
+    </div>
+
+    <!-- PRODUCTO -->
+    <div class="fg" style="margin-top:10px">
+      <div class="fgrp"><label class="flbl">Rubro</label><input class="fc" id="pr-rubro" placeholder="Industrial / Automotriz..."></div>
+      <div class="fgrp"><label class="flbl">Producto</label><input class="fc" id="pr-producto" placeholder="Nombre del producto"></div>
+      <div class="fgrp" style="grid-column:1/-1"><label class="flbl">Descripción del Producto</label><textarea class="fc" id="pr-descripcion" rows="2"></textarea></div>
+      <div class="fgrp" style="grid-column:1/-1"><label class="flbl">Clasificación Arancelaria</label><textarea class="fc" id="pr-clasificacion" rows="2"></textarea></div>
+      <div class="fgrp"><label class="flbl">Posición Arancelaria</label><input class="fc" id="pr-pos_aran" placeholder="8433.40.00.900"></div>
+      <div class="fgrp"><label class="flbl">Cantidad (unidades)</label><input type="number" class="fc" id="pr-cantidad" value="1" min="1" oninput="calcPres()"></div>
+    </div>
+
+    <!-- PRECIO -->
+    <div style="background:var(--s2);border-radius:7px;padding:11px;margin-top:10px">
+      <div style="font-size:10px;color:var(--tx2);font-weight:600;text-transform:uppercase;margin-bottom:8px">Precio del Producto</div>
+      <div class="fg">
+        <div class="fgrp"><label class="flbl">Condición de Venta (Incoterm)</label>
+          <select class="fc" id="pr-incoterm"><option value="EXW">EXW</option><option value="FCA">FCA</option><option value="FAS">FAS</option><option value="FOB">FOB</option><option value="CFR">CFR</option><option value="CIF">CIF</option><option value="CPT">CPT</option><option value="CIP">CIP</option><option value="DAP">DAP</option><option value="DPU">DPU</option><option value="DDP">DDP</option></select></div>
+        <div class="fgrp"><label class="flbl">Precio USD *</label>
+          <input type="number" class="fc" id="pr-precio_usd" placeholder="0.00" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl">Precio EUR (alternativo)</label>
+          <input type="number" class="fc" id="pr-precio_eur" placeholder="0.00"></div>
+      </div>
+    </div>
+
+    <!-- FLETE INTERNACIONAL -->
+    <div style="background:var(--s2);border-radius:7px;padding:11px;margin-top:10px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div style="font-size:10px;color:var(--tx2);font-weight:600;text-transform:uppercase">Flete Internacional</div>
+        <select class="fc" id="pr-flete_tipo" style="width:auto;font-size:11px;padding:3px 8px">
+          <option>Marítimo</option><option>Aéreo</option><option>Terrestre</option>
+        </select>
+        <span id="pr-total-flete-disp" style="font-size:11px;color:var(--acc);font-family:var(--fm)">USD 0</span>
+      </div>
+      <div class="fg">
+        <div class="fgrp"><label class="flbl">Gastos en Origen (USD)</label>
+          <input type="number" class="fc" id="pr-flete_origen" placeholder="0.00" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl">Flete (USD) — integra el Valor Imponible</label>
+          <input type="number" class="fc" id="pr-flete_flete" placeholder="0.00" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl">Gastos en Destino (USD)</label>
+          <input type="number" class="fc" id="pr-flete_destino" placeholder="0.00" oninput="calcPres()"></div>
+      </div>
+    </div>
+
+    <!-- SEGURO -->
+    <div style="background:var(--s2);border-radius:7px;padding:11px;margin-top:10px">
+      <div style="font-size:10px;color:var(--tx2);font-weight:600;text-transform:uppercase;margin-bottom:8px">Seguro Internacional</div>
+      <div class="fg">
+        <div class="fgrp"><label class="flbl">Suma Asegurable USD (vacío = Precio)</label>
+          <input type="number" class="fc" id="pr-seguro_suma" placeholder="auto" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl">Prima %</label>
+          <input type="number" class="fc" id="pr-seguro_prima" placeholder="1" step="0.01" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl">Costo Seguro USD (auto si Prima &gt; 0)</label>
+          <input type="number" class="fc" id="pr-seguro_monto" placeholder="0.00" oninput="calcPres()"></div>
+      </div>
+    </div>
+
+    <!-- TRIBUTOS ADUANEROS — ALÍCUOTAS → MONTOS AUTO -->
+    <div style="background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.15);border-radius:7px;padding:11px;margin-top:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:10px;color:var(--red);font-weight:600;text-transform:uppercase">Tributos Aduaneros — ingresá alícuotas, los montos se calculan solos</div>
+        <span id="pr-total-trib-disp" style="font-size:11px;color:var(--red);font-family:var(--fm)">USD 0</span>
+      </div>
+      <div class="fg">
+        <div class="fgrp"><label class="flbl" style="color:var(--acc)">Valor Imponible (VI) = Precio + Flete + Seguro</label>
+          <input type="number" class="fc" id="pr-vi" readonly style="color:var(--acc);font-weight:700"></div>
+        <div class="fgrp"><label class="flbl" style="color:var(--acc)">Base IVA = VI + Derechos + Estadística</label>
+          <input type="number" class="fc" id="pr-base_iva" readonly style="color:var(--acc);font-weight:700"></div>
+        <div class="fgrp"><label class="flbl">Alíc. Derechos % (sobre VI)</label>
+          <input type="number" class="fc" id="pr-ali_derechos" placeholder="0" step="0.1" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl">Derechos de Importación USD</label>
+          <input type="number" class="fc" id="pr-derechos" readonly></div>
+        <div class="fgrp"><label class="flbl">Alíc. Estadística % (sobre VI)</label>
+          <input type="number" class="fc" id="pr-ali_estadistica" placeholder="3" step="0.1" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl">Tasa de Estadística USD</label>
+          <input type="number" class="fc" id="pr-tasa_est" readonly></div>
+        <div class="fgrp"><label class="flbl" style="color:var(--org)">Alíc. IVA % (sobre Base IVA) — recuperable RI</label>
+          <input type="number" class="fc" id="pr-ali_iva" placeholder="21" step="0.1" oninput="calcPres()" style="border-color:rgba(245,158,11,.3)"></div>
+        <div class="fgrp"><label class="flbl" style="color:var(--org)">IVA USD</label>
+          <input type="number" class="fc" id="pr-iva_aduana" readonly style="color:var(--org)"></div>
+        <div class="fgrp"><label class="flbl" style="color:var(--org)">Alíc. IVA Adicional % — recuperable RI</label>
+          <input type="number" class="fc" id="pr-ali_iva_ad" placeholder="10" step="0.1" oninput="calcPres()" style="border-color:rgba(245,158,11,.3)"></div>
+        <div class="fgrp"><label class="flbl" style="color:var(--org)">IVA Adicional USD</label>
+          <input type="number" class="fc" id="pr-iva_adicional" readonly style="color:var(--org)"></div>
+        <div class="fgrp"><label class="flbl" style="color:var(--org)">Alíc. Ganancias % — recuperable RI</label>
+          <input type="number" class="fc" id="pr-ali_ganancias" placeholder="6" step="0.1" oninput="calcPres()" style="border-color:rgba(245,158,11,.3)"></div>
+        <div class="fgrp"><label class="flbl" style="color:var(--org)">Imp. a las Ganancias USD</label>
+          <input type="number" class="fc" id="pr-ganancias" readonly style="color:var(--org)"></div>
+        <div class="fgrp"><label class="flbl" style="color:var(--org)">Alíc. IIBB % — recuperable RI</label>
+          <input type="number" class="fc" id="pr-ali_iibb" placeholder="3" step="0.1" oninput="calcPres()" style="border-color:rgba(245,158,11,.3)"></div>
+        <div class="fgrp"><label class="flbl" style="color:var(--org)">Ingresos Brutos USD</label>
+          <input type="number" class="fc" id="pr-iibb" readonly style="color:var(--org)"></div>
+        <div class="fgrp"><label class="flbl">Arancel SIM USD — fijo</label>
+          <input type="number" class="fc" id="pr-arancel_sim" value="10.00" readonly style="color:var(--tx3)"></div>
+      </div>
+      <div style="font-size:10px;color:var(--org);margin-top:8px">Los ítems en naranja son recuperables para Responsable Inscripto — se descuentan automáticamente del Costo Final junto al SIM.</div>
+    </div>
+
+    <!-- GASTOS BANCARIOS -->
+    <div style="background:var(--s2);border-radius:7px;padding:11px;margin-top:10px">
+      <div style="font-size:10px;color:var(--tx2);font-weight:600;text-transform:uppercase;margin-bottom:8px">Gastos de Transferencia Internacional (Bancarios)</div>
+      <div class="fg">
+        <div class="fgrp"><label class="flbl">Comisión Giro % (sobre Precio)</label>
+          <input type="number" class="fc" id="pr-banc_comision" placeholder="6" step="0.1" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl">Gastos Swift USD</label>
+          <input type="number" class="fc" id="pr-banc_swift" placeholder="50" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl">Gastos Exterior USD</label>
+          <input type="number" class="fc" id="pr-banc_exterior" placeholder="15" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl">Total Bancario USD</label>
+          <input type="number" class="fc" id="pr-banc_total" readonly style="font-weight:700"></div>
+      </div>
+    </div>
+
+    <!-- DESPACHANTE / E-COMEX -->
+    <div style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:7px;padding:11px;margin-top:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:10px;color:var(--grn);font-weight:600;text-transform:uppercase">Despachante E-COMEX</div>
+        <span id="pr-total-desp-disp" style="font-size:11px;color:var(--grn);font-family:var(--fm)">USD 0</span>
+      </div>
+      <div class="fg">
+        <div class="fgrp"><label class="flbl" style="color:var(--grn);font-weight:600">Honorarios E-COMEX (USD) — RENTABILIDAD</label>
+          <input type="number" class="fc" id="pr-honorarios" placeholder="0.00" oninput="calcPres()" style="border-color:rgba(34,197,94,.4);color:var(--grn);font-weight:700"></div>
+        <div class="fgrp"><label class="flbl">Gastos Operativos USD</label>
+          <input type="number" class="fc" id="pr-desp_gastos" placeholder="0.00" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl">Digitalización USD</label>
+          <input type="number" class="fc" id="pr-desp_digit" placeholder="0.00" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl">Otros USD</label>
+          <input type="number" class="fc" id="pr-desp_otros" placeholder="0.00" oninput="calcPres()"></div>
+      </div>
+      <div style="font-size:10px;color:var(--tx3);margin-top:5px">Los Honorarios se convierten en la rentabilidad del expediente al aprobar. Siempre editables.</div>
+    </div>
+
+    <!-- OTROS COSTOS -->
+    <div style="background:var(--s2);border-radius:7px;padding:11px;margin-top:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:10px;color:var(--tx2);font-weight:600;text-transform:uppercase">Otros Costos (USD) — portuarios, logística nacional, etc.</div>
+        <button class="btn bg2 bs" onclick="presAddRow({concepto:'',monto:'',es_iva:false});calcPres()">＋ Agregar</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 130px 90px 30px;gap:4px;margin-bottom:4px">
+        <div style="font-size:10px;color:var(--tx3)">Concepto</div>
+        <div style="font-size:10px;color:var(--tx3)">Monto USD</div>
+        <div></div><div></div>
+      </div>
+      <div id="pr-costos-rows"></div>
+    </div>
+
+    <!-- RESUMEN -->
+    <div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:7px;padding:11px;margin-top:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:10px;color:var(--org);font-weight:600;text-transform:uppercase">Resumen y Costo Final</div>
+        <span id="pr-recup-disp" style="font-size:11px;color:var(--org);font-family:var(--fm)"></span>
+      </div>
+      <div class="fg">
+        <div class="fgrp"><label class="flbl">TOTAL USD (erogación completa)</label>
+          <input type="number" class="fc" id="pr-total_usd" readonly style="color:var(--acc);font-weight:700"></div>
+        <div class="fgrp"><label class="flbl" style="color:var(--org);font-weight:600">COSTO FINAL USD</label>
+          <input type="number" class="fc" id="pr-costo_final" readonly style="color:var(--org);font-weight:700;font-size:14px"></div>
+        <div class="fgrp"><label class="flbl">Costo Unitario USD (÷ cantidad)</label>
+          <input type="number" class="fc" id="pr-costo_unit" readonly style="font-weight:700"></div>
+      </div>
+    </div>
+
+    <!-- OBSERVACIONES -->
+    <div class="fg" style="margin-top:10px">
+      <div class="fgrp" style="grid-column:1/-1"><label class="flbl">Observaciones / Condiciones de pago</label>
+        <textarea class="fc" id="pr-observaciones" rows="3"></textarea></div>
+      <div class="fgrp"><label class="flbl">Estado</label>
+        <select class="fc" id="pr-estado">
+          <option>Pendiente</option><option>Aprobado</option><option>Rechazado</option>
+        </select></div>
+    </div>
+
+  </div>
+  <div class="mf">
+    <button class="btn bg2" onclick="cM('m-pres')">Cancelar</button>
+    <button class="btn bp" onclick="gPres()">💾 Guardar</button>
+  </div>
+</div></div>
 </body>
 </html>
