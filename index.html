@@ -944,7 +944,7 @@ function abrirNuevoPres(){
   editIdx=-1;editTabla='presupuestos';
   if($('pr-nro'))$('pr-nro').value=nextNroPres();
   if($('pr-fecha'))$('pr-fecha').value=new Date().toISOString().slice(0,10);
-  ['pr-cuit','pr-cliente','pr-rubro','pr-producto','pr-pos_aran','pr-observaciones','pr-precio_usd','pr-precio_eur','pr-flete_origen','pr-flete_flete','pr-flete_destino','pr-seguro_suma','pr-seguro_monto','pr-honorarios','pr-desp_gastos','pr-desp_digit','pr-desp_otros'].forEach(id=>{if($(id))$(id).value='';});
+  ['pr-cuit','pr-cliente','pr-rubro','pr-producto','pr-pos_aran','pr-precio_usd','pr-precio_eur','pr-flete_origen','pr-flete_flete','pr-flete_destino','pr-seguro_suma','pr-seguro_monto','pr-honorarios','pr-desp_gastos','pr-desp_digit','pr-desp_otros'].forEach(id=>{if($(id))$(id).value='';});
   setV('pr-seguro_prima','1');
   setV('pr-ali_derechos','0');setV('pr-ali_estadistica','3');setV('pr-ali_iva','21');setV('pr-ali_iva_ad','10');setV('pr-ali_ganancias','6');setV('pr-ali_iibb','3');
   setV('pr-banc_comision','6');setV('pr-banc_swift','50');setV('pr-banc_exterior','15');
@@ -1232,7 +1232,7 @@ function _doPPT(i){
   // Cliente + fecha box
   s1.addText([{text:'CLIENTE\n',options:{fontSize:10,color:GRY,bold:true,charSpacing:2}},{text:(p.cliente||''),options:{fontSize:16,color:NAVY,bold:true}}],{x:0.4,y:2.75,w:7,h:0.8,fontFace:'Arial',valign:'top'});
   const mes=p.fecha?['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][parseInt(p.fecha.split('-')[1])-1]+' '+p.fecha.split('-')[0]:'';
-  s1.addText([{text:'PRESUPUESTO\n',options:{fontSize:10,color:GRY,bold:true,charSpacing:2}},{text:(p.nro||'')+'\n',options:{fontSize:15,color:INK,bold:true}},{text:mes,options:{fontSize:11,color:GRY}}],{x:9.2,y:2.75,w:3.7,h:0.9,fontFace:'Arial',align:'right',valign:'top'});
+  s1.addText([{text:'COTIZACIÓN\n',options:{fontSize:10,color:GRY,bold:true,charSpacing:2}},{text:(p.nro||'')+'\n',options:{fontSize:15,color:INK,bold:true}},{text:mes,options:{fontSize:11,color:GRY}}],{x:9.2,y:2.75,w:3.7,h:0.9,fontFace:'Arial',align:'right',valign:'top'});
   // Datos producto chips
   const tipoTxt=p.es_importador!==false?('Importador — '+((p.destino||'comercializable')==='bien_uso'?'Bien de Uso':'Comercializable')):'No Importador';
   let chipY=3.85;
@@ -1265,25 +1265,26 @@ function _doPPT(i){
     {text:fN2(monto),options:{fontFace:'Arial',fontSize:11,color:INK,align:'right',fill:{color:bg}}},
     {text:recup?'Sí':'',options:{fontFace:'Arial',fontSize:10,color:YEL,bold:true,align:'center',fill:{color:bg}}}
   ]);};
-  addR((p.incoterm||'EXW')+': Precio del producto',p.precio_usd||0,false);
+  addR('Precio del producto',p.precio_usd||0,false);
   const ftot=(p.flete_origen||0)+(p.flete_flete||0)+(p.flete_destino||0);
   if(ftot>0)addR('Flete '+(p.flete_tipo||'Marítimo')+' internacional',ftot,false);
   if(p.seguro>0)addR('Seguro internacional',p.seguro,false);
-  if(p.derechos>0)addR('Derechos de importación',p.derechos,false);
+  if(p.derechos>0)addR('Derechos de importación ('+fN2(p.ali_derechos||0)+'%)',p.derechos,false);
   if(p.tasa_est>0)addR('Tasa de estadística',p.tasa_est,false);
-  if(p.iva_aduana>0)addR('IVA',p.iva_aduana,recIVA);
-  if(p.iva_adicional>0)addR('IVA adicional',p.iva_adicional,recOtros);
-  if(p.ganancias>0)addR('Impuesto a las ganancias',p.ganancias,recOtros);
-  if(p.iibb>0)addR('Ingresos brutos',p.iibb,recOtros);
+  if(p.iva_aduana>0)addR('IVA ('+fN2(p.ali_iva||0)+'%)',p.iva_aduana,recIVA);
+  if(p.iva_adicional>0)addR('IVA adicional ('+fN2(p.ali_iva_ad||0)+'%)',p.iva_adicional,recOtros);
+  if(p.ganancias>0)addR('Impuesto a las ganancias ('+fN2(p.ali_ganancias||0)+'%)',p.ganancias,recOtros);
+  if(p.iibb>0)addR('Ingresos brutos ('+fN2(p.ali_iibb||0)+'%)',p.iibb,recOtros);
   addR('Arancel SIM',10,false);
   if(p.bancario>0)addR('Gastos de transferencia internacional',p.bancario,false);
   const despNeto=(p.honorarios||0)+(p.desp_gastos||0)+(p.desp_digit||0)+(p.desp_otros||0);
-  if(despNeto>0)addR('Honorarios y gastos despachante (IVA incl.)',despNeto*1.21,false);
-  (p.otros_costos||[]).forEach(c=>{if(c.monto>0)addR(c.concepto||'Otro costo',c.monto,false);});
+  if(despNeto>0)addR('Honorarios y gastos despachante',despNeto*1.21,false);
+  (p.otros_costos||[]).forEach(c=>{if(c.monto>0)addR(c.concepto||'Otro costo',c.es_iva?c.monto*1.21:c.monto,false);});
   // Total
+  const totalDisplay=esImp?(p.total_usd||0):(p.total_usd||0)-(p.iva_aduana||0);
   rows.push([
     {text:'TOTAL EROGACIÓN',options:{bold:true,fill:{color:BGSOFT},color:INK,fontFace:'Arial',fontSize:12}},
-    {text:fN2(p.total_usd||0),options:{bold:true,fill:{color:BGSOFT},color:NAVY,fontFace:'Arial',fontSize:13,align:'right'}},
+    {text:fN2(totalDisplay),options:{bold:true,fill:{color:BGSOFT},color:NAVY,fontFace:'Arial',fontSize:13,align:'right'}},
     {text:'',options:{fill:{color:BGSOFT}}}
   ]);
   if(esImp){
@@ -1317,14 +1318,12 @@ function _doPPT(i){
   // Observaciones
   s3.addText('OBSERVACIONES',{x:0.4,y:3.5,w:12,h:0.35,fontFace:'Arial',fontSize:13,bold:true,color:INK,charSpacing:1});
   s3.addShape(prs.shapes.RECTANGLE,{x:0.42,y:3.88,w:1.4,h:0.03,fill:{color:YEL}});
-  const obs=p.observaciones||'';
-  if(obs){
-    const lines=obs.split('\n').filter(l=>l.trim());
-    const rich=lines.map((l,idx)=>({text:l.replace(/^[•\-]\s*/,'').trim(),options:{bullet:{code:'2022'},fontFace:'Arial',fontSize:11,color:'4A5568',paraSpaceAfter:6,breakLine:true}}));
-    s3.addText(rich,{x:0.5,y:4.05,w:12.3,h:2.7,valign:'top'});
-  }else{
-    s3.addText('Sin observaciones registradas.',{x:0.5,y:4.05,w:12,h:0.4,fontFace:'Arial',fontSize:11,italic:true,color:GRY});
-  }
+  const obsFixed=`* Todos los gastos son cotizados en dólares estadounidenses.\nAl momento del pago (1) se toma el tipo de cambio informal o blue para realizar el pago al proveedor en origen de forma anticipada.\nAl momento del pago (2) se toma el tipo de cambio oficial vendedor del banco Nación para realizar los pagos en pesos argentinos por transferencia bancaria.\n• Los pagos se realizan en dos partes:\n1. Se abona el precio del producto más los gastos bancarios. Este pago es inicial para poder transferir el monto al proveedor en origen. Los ítems a tipo de cambio blue o informal están destacados con *.\n2. Una vez que la carga llega al país, se abona el resto según el análisis enviado.`;
+  const obsUser=p.observaciones||'';
+  const obsTotal=(obsUser?obsUser+'\n\n':'')+obsFixed;
+  const lines=obsTotal.split('\n').filter(l=>l.trim());
+  const rich=lines.map((l)=>({text:l.replace(/^[•\-]\s*/,'').trim(),options:{bullet:l.startsWith('•')||l.startsWith('-')||l.match(/^\d\./)? {code:'2022'}:false,fontFace:'Arial',fontSize:10,color:'4A5568',paraSpaceAfter:4,breakLine:true}}));
+  s3.addText(rich,{x:0.5,y:4.05,w:12.3,h:2.8,valign:'top'});
   ffoot(s3);
 
   const fname='EComex_Presupuesto_'+(p.nro||'').replace(/[^a-zA-Z0-9]/g,'_')+'_'+(p.cliente||'').replace(/\s+/g,'_').substring(0,20)+'.pptx';
