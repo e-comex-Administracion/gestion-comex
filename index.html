@@ -1193,7 +1193,7 @@ async function aprobarPres(i){
     tc:tc,
     hon_usd:honUSD,
     hon_ars:honARS,
-    importe_ref:p.costo_final||p.total_usd||0,
+    importe_ref:honUSD*1.21,
     moneda_ref:'USD',
     f_cobro_est:fCobro,
     notas:'Generado desde presupuesto '+p.nro+'. Producto: '+(p.producto||'')+'. Pos. Aran.: '+(p.pos_aran||''),
