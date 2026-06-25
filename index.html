@@ -272,17 +272,15 @@ function mesLabel(key){if(!key||key==='sin')return'SIN FECHA';const[y,m]=key.spl
 function fU(n){const x=parseFloat(n)||0;return x?'USD '+fN(x):'-';}
 function lTC(){if(!D.tipo_cambio.length)return 1;return parseFloat(D.tipo_cambio[D.tipo_cambio.length-1].ref)||1;}
 function rentExp(o){
-  const gastos=D.facturas_prov.filter(f=>f.op_id===o.id).reduce((a,f)=>a+(f.tars||0),0);
-  const facs=D.facturas_emit.filter(f=>f.op_id===o.id);
-  let base;
-  if(facs.length){
-    // Facturado menos reintegros (gastos a cuenta del cliente, neutros)
-    base=facs.reduce((a,f)=>{
-      const reintARS=(f.reint||0)*(f.mon==='USD'?(f.tc_v||lTC()):1);
-      return a+(f.tars||0)-reintARS;
-    },0);
-  }else{base=(o.importe_ref||0)>0?(o.moneda_ref==='USD'?(o.importe_ref*(o.tc||lTC())):o.importe_ref):0;}
-  return base-gastos;
+  // Rentabilidad = Honorarios E-COMEX (lo que E-COMEX gana, no lo que factura al cliente)
+  const tcOp=o.tc||lTC()||1;
+  if((o.hon_ars||0)>0) return o.hon_ars;
+  if((o.hon_usd||0)>0) return o.hon_usd*tcOp;
+  return 0;
+}
+function rentExpEst(o){
+  // Indica si la rentabilidad es estimada (no hay honorarios cargados)
+  return !((o.hon_ars||0)>0||(o.hon_usd||0)>0);
 }
 function eB(e){const m={PAGADA:'bgg',COBRADA:'bgg',CERRADA:'bgg',SI:'bgg',PENDIENTE:'bgo','EN CURSO':'bgb','EN TRAMITE':'bgb',NO:'bgr',CANCELADA:'bgr',VENCIDA:'bgr'};return`<span class="bg ${m[e]||'bgp'}">${e||'-'}</span>`;}
 function toast(msg,t='ok'){const el=$('toast');el.textContent=msg;el.className='show '+t;setTimeout(()=>el.className='',3000);}
@@ -345,38 +343,157 @@ function tgChq(p){const f=$(p+'-forma')?.value;const b=$(p+'-cbox');if(b)b.style
 // ═══ RENDERS ══════════════════════════════════
 function rDash(pg){
   const fp=D.facturas_prov,fe=D.facturas_emit,op=D.operaciones,pa=D.pagos,co=D.cobranzas;
-  const pp=fp.filter(f=>f.ep==='PENDIENTE'),pc=fe.filter(f=>f.ec==='PENDIENTE');
+  const tcRef=lTC();
+
+  // Operaciones activas
   const oa=op.filter(o=>o.estado!=='CERRADA'&&o.estado!=='CANCELADA');
-  const tpp=pp.reduce((a,f)=>a+(f.tars||0),0),tpc=pc.reduce((a,f)=>a+(f.tars||0),0);
-  const tcob=co.reduce((a,c)=>a+(c.mars||0),0),tpag=pa.reduce((a,p)=>a+(p.mars||0),0);
+
+  // Facturado y cobro
+  const facturadas=new Set(fe.map(f=>f.op_id));
+  const opsConFac=oa.filter(o=>facturadas.has(o.id));
+  const opsSinFac=oa.filter(o=>!facturadas.has(o.id));
+  const pendCobro=fe.filter(f=>f.ec==='PENDIENTE');
+  const tPendCobro=pendCobro.reduce((a,f)=>a+(f.tars||0),0);
+  const tCobrado=co.reduce((a,c)=>a+(c.mars||0),0);
+
+  // Rentabilidad esperada (honorarios de ops activas)
+  const rentEsperada=oa.reduce((a,o)=>{
+    if((o.hon_ars||0)>0) return a+o.hon_ars;
+    if((o.hon_usd||0)>0) return a+(o.hon_usd*(o.tc||tcRef||1));
+    return a;
+  },0);
+
+  // Rentabilidad cobrada (de ops cerradas o facturadas y cobradas)
+  const rentCobrada=op.filter(o=>o.estado==='CERRADA').reduce((a,o)=>{
+    if((o.hon_ars||0)>0) return a+o.hon_ars;
+    if((o.hon_usd||0)>0) return a+(o.hon_usd*(o.tc||tcRef||1));
+    return a;
+  },0);
+
+  // Gastos pend pago
+  const pp=fp.filter(f=>f.ep==='PENDIENTE');
+  const tpp=pp.reduce((a,f)=>a+(f.tars||0),0);
+
+  // Semáforo por expediente
+  const semRows=oa.map(o=>{
+    const hasFac=facturadas.has(o.id);
+    const facs=fe.filter(f=>f.op_id===o.id);
+    const cobros=co.filter(c=>facs.some(f=>f.id===c.fac_id));
+    const totalFac=facs.reduce((a,f)=>a+(f.tars||0),0);
+    const totalCob=cobros.reduce((a,c)=>a+(c.mars||0),0);
+    const honARS=(o.hon_ars||0)>0?o.hon_ars:(o.hon_usd||0)>0?(o.hon_usd*(o.tc||tcRef)):0;
+
+    let estadoFin,color;
+    if(!hasFac){estadoFin='🔴 Sin facturar';color='var(--rd)';}
+    else if(totalCob>=totalFac*0.99){estadoFin='🟢 Cobrado';color='var(--gn)';}
+    else if(totalCob>0){estadoFin='🟡 Cobro parcial';color='var(--org)';}
+    else{estadoFin='🟡 Facturado, pend.cobro';color='var(--org)';}
+
+    return[
+      `<span style="color:var(--acc);font-weight:600">${o.exp}</span>`,
+      `<span style="font-size:12px">${o.cliente}</span>`,
+      eB(o.estado),
+      hasFac?`<span class="tdc rp">$ ${fN(totalFac)}</span>`:`<span style="color:var(--tx3);font-size:11px">Pendiente</span>`,
+      hasFac?(totalCob>0?`<span class="tdc" style="color:var(--gn)">$ ${fN(totalCob)}</span>`:`<span style="color:var(--tx3);font-size:11px">Sin cobrar</span>`):`<span style="color:var(--tx3);font-size:11px">-</span>`,
+      honARS>0?`<span class="tdc" style="color:var(--gn);font-weight:700">$ ${fN(honARS)}</span>`:`<span style="color:var(--tx3);font-size:11px">-</span>`,
+      `<span style="color:${color};font-size:11px;font-weight:600">${estadoFin}</span>`,
+    ];
+  });
+
+  // Alertas de vencimiento próximo (7 días)
+  const hoy=new Date();hoy.setHours(0,0,0,0);
+  const alertas=[];
+  fp.filter(f=>f.ep==='PENDIENTE'&&f.fv).forEach(f=>{
+    const d=Math.ceil((new Date(f.fv)-hoy)/864e5);
+    if(d<=7)alertas.push({tipo:'pago',txt:`${f.prov} — ${f.nro||'S/N'}`,dias:d,monto:f.tars});
+  });
+  fe.filter(f=>f.ec==='PENDIENTE'&&f.fv).forEach(f=>{
+    const d=Math.ceil((new Date(f.fv)-hoy)/864e5);
+    if(d<=7)alertas.push({tipo:'cobro',txt:`${f.cliente} — ${f.nro||'S/N'}`,dias:d,monto:f.tars});
+  });
+  alertas.sort((a,b)=>a.dias-b.dias);
+
+  const alertHTML=alertas.length
+    ?alertas.map(a=>`<div style="display:flex;align-items:center;gap:8px;padding:8px;background:${a.dias<=3?'rgba(239,68,68,.08)':'rgba(245,158,11,.06)'};border-left:3px solid ${a.dias<=3?'var(--rd)':'var(--org)'};border-radius:4px;margin-bottom:6px">
+        <span style="font-size:16px">${a.tipo==='pago'?'💸':'💰'}</span>
+        <div style="flex:1;font-size:12px"><div style="font-weight:600">${a.txt}</div><div style="color:var(--tx3);font-size:11px">${a.tipo==='pago'?'Pago':'Cobro'} · $ ${fN(a.monto)}</div></div>
+        <span style="font-weight:700;font-size:12px;color:${a.dias<=0?'var(--rd)':a.dias<=3?'var(--rd)':'var(--org)'}">${a.dias<=0?'VENCIDA':a.dias===0?'HOY':a.dias+'d'}</span>
+      </div>`).join('')
+    :`<div style="text-align:center;color:var(--tx3);padding:16px;font-size:12px">✅ Sin vencimientos próximos</div>`;
+
   pg.innerHTML=sg([
-    {l:'Operaciones Activas',v:oa.length,s:op.length+' total en sistema',c:'bl'},
-    {l:'Fact. Pend. Pago',v:pp.length,s:'$ '+fN(tpp),c:'og'},
-    {l:'Fact. Pend. Cobro',v:pc.length,s:'$ '+fN(tpc),c:'gn'},
-    {l:'Total Cobrado',v:'$ '+fN(tcob),s:'Pagado: $ '+fN(tpag),c:'pu'},
-  ])+`<div class="gr2">
-    <div class="card"><div class="ch"><span class="cn">Operaciones Activas</span></div><div class="cb">
-      ${tbl(['Expediente','Cliente','Estado','Apertura'],oa.map(o=>[
-        `<span class="tdc" style="color:var(--acc)">${o.exp}</span>`,o.cliente,eB(o.estado),fF(o.f_ap)
-      ]),'Sin operaciones activas')}</div></div>
-    <div class="card"><div class="ch"><span class="cn">Facturas Pendientes de Pago</span></div><div class="cb">
-      ${tbl(['Proveedor','Vence','Total','Estado'],pp.map(f=>[
-        `<span class="tdm">${f.prov}</span>`,`<span class="tdc">${fF(f.fv)}</span>`,`<span class="tdc">$ ${fN(f.tars)}</span>`,eB(f.ep)
-      ]),'Sin facturas pendientes')}</div></div>
+    {l:'Operaciones Activas',v:oa.length,s:opsSinFac.length+' sin facturar · '+opsConFac.length+' facturadas',c:'bl'},
+    {l:'Pendiente de Cobro',v:'$ '+fN(tPendCobro),s:pendCobro.length+' fact. emitidas pendientes',c:'og'},
+    {l:'Rentabilidad Esperada',v:'$ '+fN(rentEsperada),s:'Honorarios ops. activas',c:'gn'},
+    {l:'Rentabilidad Realizada',v:'$ '+fN(rentCobrada),s:'Honorarios ops. cerradas',c:'pu'},
+    {l:'Fact. Prov. Pend. Pago',v:'$ '+fN(tpp),s:pp.length+' facturas pendientes',c:'rd'},
+    {l:'Total Cobrado Histórico',v:'$ '+fN(tCobrado),s:'Acumulado de cobranzas',c:'bl'},
+  ])+`
+  <div class="card" style="margin-bottom:14px">
+    <div class="ch"><span class="cn">📊 Estado Financiero por Expediente</span>
+      <span style="font-size:11px;color:var(--tx3)">🔴 Sin facturar · 🟡 Facturado/Cobro parcial · 🟢 Cobrado</span>
+    </div>
+    <div class="cb">${tbl(['Expediente','Cliente','Estado','Facturado','Cobrado','Hon. E-COMEX','Estado Fin.'],semRows,'Sin operaciones activas')}</div>
+  </div>
+  <div class="gr2">
+    <div class="card"><div class="ch"><span class="cn">⚠️ Vencimientos Próximos (7 días)</span></div>
+      <div class="cb">${alertHTML}</div>
+    </div>
+    <div class="card"><div class="ch"><span class="cn">💸 Fact. Proveedores Pendientes de Pago</span></div><div class="cb">
+      ${tbl(['Proveedor','Vence','Total','Expediente'],pp.slice(0,8).map(f=>[
+        `<span class="tdm">${f.prov}</span>`,
+        `<span class="tdc" style="color:${f.fv&&new Date(f.fv)<hoy?'var(--rd)':'var(--tx)'}">${fF(f.fv)}</span>`,
+        `<span class="tdc rn">$ ${fN(f.tars)}</span>`,
+        f.op?`<span style="font-size:11px;color:var(--acc)">${f.op}</span>`:`<span style="color:var(--tx3);font-size:11px">Estructura</span>`
+      ]),'Sin facturas pendientes')}</div>
+    </div>
   </div>`;
 }
 
 function rExps(pg,ac){
   ac.innerHTML=`<button class="btn bp bs" onclick="oM('m-ex')">＋ Nueva Operación</button>`;
-  pg.innerHTML=`<div class="card"><div class="ch"><span class="cn">Expedientes de Importación</span></div><div class="cb">
-    ${tbl(['Expediente','Cliente','Mercadería','Apertura','Cierre','TC','Imp. Referencia','Rentab. Actual','F. Est. Cobro','Estado','Acciones'],
-      D.operaciones.map((o,i)=>[
-        `<span class="tdc" style="color:var(--acc);cursor:pointer" onclick="vExp(${i})" title="Ver detalle">${o.exp} 🔍</span>`,
-        `<span class="tdm">${o.cliente}</span>`,(o.merc||"").substring(0,28)+'...',fF(o.f_ap),fF(o.f_cl),`$ ${fN(o.tc)}`,
-        o.importe_ref?`<span class="tdc rp">${o.moneda_ref==='USD'?fU(o.importe_ref):'$ '+fN(o.importe_ref)}</span>`:'—',
-        (()=>{const r=rentExp(o);return `<span class="tdc ${r>=0?'rp':'rn'}" style="font-weight:700">$ ${fN(r)}</span>`;})(),
-        o.f_cobro_est?fF(o.f_cobro_est):'—',eB(o.estado),ac2('operaciones',i)
-      ]))}</div></div>`;
+  const tcRef=lTC();
+  const rows=D.operaciones.map((o,i)=>{
+    const facs=D.facturas_emit.filter(f=>f.op_id===o.id);
+    const totalFac=facs.reduce((a,f)=>a+(f.tars||0),0);
+    const cobros=D.cobranzas.filter(c=>facs.some(f=>f.id===c.fac_id));
+    const totalCob=cobros.reduce((a,c)=>a+(c.mars||0),0);
+    const honARS=rentExp(o);
+    const esEst=rentExpEst(o);
+
+    // Semáforo
+    let sem;
+    if(!facs.length){sem=`<span style="color:var(--rd);font-weight:600;font-size:11px">🔴 Sin facturar</span>`;}
+    else if(totalCob>=totalFac*0.99){sem=`<span style="color:var(--gn);font-weight:600;font-size:11px">🟢 Cobrado</span>`;}
+    else if(totalCob>0){sem=`<span style="color:var(--org);font-weight:600;font-size:11px">🟡 Cobro parcial</span>`;}
+    else{sem=`<span style="color:var(--org);font-weight:600;font-size:11px">🟡 Pend. cobro</span>`;}
+
+    const facCell=totalFac>0?`<span class="tdc rp">$ ${fN(totalFac)}</span>`:`<span style="color:var(--tx3);font-size:11px">—</span>`;
+    const cobCell=totalCob>0?`<span class="tdc" style="color:var(--gn)">$ ${fN(totalCob)}</span>`:`<span style="color:var(--tx3);font-size:11px">—</span>`;
+    const honCell=honARS>0
+      ?`<span class="tdc" style="color:var(--gn);font-weight:700">$ ${fN(honARS)}${esEst?' <small style=color:var(--org)>(est.)</small>':''}</span>`
+      :`<span style="color:var(--tx3);font-size:11px">—</span>`;
+
+    return[
+      `<span style="color:var(--acc);cursor:pointer;font-weight:600" onclick="vExp(${i})" title="Ver detalle">${o.exp} 🔍</span>`,
+      `<span class="tdm">${o.cliente}</span>`,
+      `<span style="font-size:11px">${(o.merc||'').substring(0,25)}${(o.merc||'').length>25?'...':''}</span>`,
+      fF(o.f_ap),
+      eB(o.estado),
+      facCell,
+      cobCell,
+      honCell,
+      sem,
+      o.f_cobro_est?`<span class="tdc">${fF(o.f_cobro_est)}</span>`:'—',
+      ac2('operaciones',i)
+    ];
+  });
+  pg.innerHTML=`<div class="card"><div class="ch">
+    <span class="cn">Expedientes de Importación</span>
+    <span style="font-size:11px;color:var(--tx3)">Hon. E-COMEX = rentabilidad real de la operación</span>
+  </div><div class="cb">
+    ${tbl(['Expediente','Cliente','Mercadería','Apertura','Estado','Facturado','Cobrado','Hon. E-COMEX ✦','Est. Fin.','F.Cobro Est.','Acciones'],rows)}
+  </div></div>`;
 }
 
 function vExp(idx){
