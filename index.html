@@ -587,36 +587,90 @@ async function tcR(){const of=prompt('TC Oficial BCRA hoy:','');if(!of||isNaN(pa
 function rRent(pg){
   const fe=D.facturas_emit,fp=D.facturas_prov;
   const tcRef=lTC();
-  // Gastos de estructura (no cambian)
+
+  // Gastos de estructura
   const tES=fp.filter(f=>f.asig==='ESTRUCTURA').reduce((a,f)=>a+(f.tars||0),0);
-  let totBaseNeta=0,totGastoOp=0,totReint=0;
+
+  let totHonARS=0,totFacBruto=0,totReint=0,totHonEst=0;
+
   const opRows=D.operaciones.map(o=>{
-    const gastos=fp.filter(f=>f.op_id===o.id).reduce((a,f)=>a+(f.tars||0),0);
+    const tcOp=o.tc||tcRef||1;
+
+    // Honorarios E-COMEX = RENTABILIDAD REAL
+    // Primero intentar desde facturas emitidas (neto sin reintegros = honorarios reales)
     const facs=fe.filter(f=>f.op_id===o.id);
     const facBruto=facs.reduce((a,f)=>a+(f.tars||0),0);
     const reint=facs.reduce((a,f)=>a+((f.reint||0)*(f.mon==='USD'?(f.tc_v||tcRef):1)),0);
-    let base,esEst=false;
-    if(facs.length){base=facBruto-reint;}
-    else{base=(o.importe_ref||0)>0?(o.moneda_ref==='USD'?(o.importe_ref*(o.tc||tcRef)):o.importe_ref):0;esEst=true;}
-    const r=base-gastos;
-    const m=base>0?(r/base*100).toFixed(1):0;
-    totBaseNeta+=base;totGastoOp+=gastos;totReint+=reint;
-    const baseCell=esEst
-      ?`<span class="tdc" style="color:var(--org)">$ ${fN(base)} <small>(est.)</small></span>`
-      :`<span class="tdc">$ ${fN(base)}</span>`;
-    return[`<span class="tdc">${o.exp}</span>`,o.cliente,eB(o.estado),`<span class="tdc rn">$ ${fN(gastos)}</span>`,baseCell,`<span class="tdc ${r>=0?'rp':'rn'}" style="font-weight:700">$ ${fN(r)}</span>`,`<span class="${m>=0?'rp':'rn'}">${m}%</span>`];
+    const facNeto=facBruto-reint; // lo que facturaste al cliente (para referencia)
+
+    // Honorarios reales: hon_ars si está cargado, sino hon_usd*tc, sino estimado
+    let honARS=0,esEst=false;
+    if((o.hon_ars||0)>0){
+      honARS=o.hon_ars;
+    } else if((o.hon_usd||0)>0){
+      honARS=o.hon_usd*tcOp;
+    } else if(facs.length&&facNeto>0){
+      // Si hay facturas pero no hay honorarios cargados: usar neto facturado como aprox
+      honARS=facNeto;
+    } else if((o.importe_ref||0)>0){
+      honARS=o.moneda_ref==='USD'?(o.importe_ref*tcOp):o.importe_ref;
+      esEst=true;
+    }
+
+    // Margen sobre honorarios
+    const m=honARS>0?'100.0':0; // honorarios = rentabilidad pura (sin gastos que son del cliente)
+
+    totHonARS+=honARS;
+    totFacBruto+=facBruto;
+    totReint+=reint;
+    if(esEst)totHonEst+=honARS;
+
+    const honCell=esEst
+      ?`<span class="tdc" style="color:var(--org)">$ ${fN(honARS)} <small>(est.)</small></span>`
+      :`<span class="tdc rp" style="font-weight:700">$ ${fN(honARS)}</span>`;
+
+    const facCell=facBruto>0
+      ?`<span class="tdc">$ ${fN(facBruto)}</span>${reint>0?` <small style="color:var(--tx3)">(-$ ${fN(reint)} reint.)</small>`:''}`
+      :`<span style="color:var(--tx3);font-size:11px">Sin factura</span>`;
+
+    // Estado cobro
+    const cobrado=D.cobranzas.filter(c=>facs.some(f=>f.id===c.fac_id)).reduce((a,c)=>a+(c.mars||0),0);
+    const cobPct=facBruto>0?Math.round(cobrado/facBruto*100):0;
+    const cobCell=facBruto>0
+      ?`<span style="color:${cobPct>=100?'var(--gn)':cobPct>0?'var(--org)':'var(--rd)'};font-size:11px;font-weight:600">${cobPct>=100?'✅ Cobrado':cobPct>0?cobPct+'% cobrado':'⏳ Pendiente'}</span>`
+      :`<span style="color:var(--tx3);font-size:11px">-</span>`;
+
+    return[
+      `<span class="tdc">${o.exp}</span>`,
+      o.cliente,
+      eB(o.estado),
+      facCell,
+      cobCell,
+      honCell,
+    ];
   });
-  const esRows=fp.filter(f=>f.asig==='ESTRUCTURA').map(f=>[`<span class="tdm">${f.prov}</span>`,f.tg,`<span class="tdc">${fF(f.fe)}</span>`,`<span class="tdc rn">$ ${fN(f.tars)}</span>`,eB(f.ep)]);
-  const resOp=totBaseNeta-totGastoOp;
+
+  const esRows=fp.filter(f=>f.asig==='ESTRUCTURA').map(f=>[
+    `<span class="tdm">${f.prov}</span>`,f.tg,
+    `<span class="tdc">${fF(f.fe)}</span>`,
+    `<span class="tdc rn">$ ${fN(f.tars)}</span>`,eB(f.ep)
+  ]);
+
   pg.innerHTML=sg([
-    {l:'Facturado Neto Ops.',v:'$ '+fN(totBaseNeta),s:totReint>0?'Sin reintegros ($ '+fN(totReint)+')':'',c:'gn'},
-    {l:'Gastos Operaciones',v:'$ '+fN(totGastoOp),c:'og'},
-    {l:'Gastos Estructura',v:'$ '+fN(tES),c:'pu'},
-    {l:'Resultado Neto',v:'$ '+fN(resOp-tES),s:'Margen ops: $ '+fN(resOp),c:resOp-tES>=0?'gn':'bl'},
-  ])+`<div class="card"><div class="ch"><span class="cn">Rentabilidad por Operación</span><span style="font-size:11px;color:var(--tx3)">Base = facturado neto de reintegros, o estimado si no hay factura</span></div><div class="cb">
-    ${tbl(['Expediente','Cliente','Estado','Gastos','Facturado / Base','Resultado','Margen'],opRows)}</div></div>
+    {l:'Honorarios E-COMEX (Rentabilidad)',v:'$ '+fN(totHonARS),s:totHonEst>0?'Incluye $ '+fN(totHonEst)+' estimados':'',c:'gn'},
+    {l:'Facturado Bruto Clientes',v:'$ '+fN(totFacBruto),s:totReint>0?'Reintegros: $ '+fN(totReint):'',c:'bl'},
+    {l:'Gastos de Estructura',v:'$ '+fN(tES),c:'pu'},
+    {l:'Rentabilidad Neta',v:'$ '+fN(totHonARS-tES),s:'Honorarios − Estructura',c:(totHonARS-tES)>=0?'gn':'rd'},
+  ])+`
+  <div class="card"><div class="ch">
+    <span class="cn">Rentabilidad por Operación</span>
+    <span style="font-size:11px;color:var(--tx3)">Honorarios E-COMEX = rentabilidad real · Facturado = total al cliente (incluye reintegros de gastos)</span>
+  </div><div class="cb">
+    ${tbl(['Expediente','Cliente','Estado','Facturado al Cliente','Estado Cobro','Honorarios E-COMEX ✦'],opRows)}
+  </div></div>
   <div class="card"><div class="ch"><span class="cn">Gastos de Estructura</span></div><div class="cb">
-    ${tbl(['Proveedor','Tipo de Gasto','Fecha','Total','Estado'],esRows)}</div></div>`;
+    ${tbl(['Proveedor','Tipo de Gasto','Fecha','Total','Estado'],esRows)}
+  </div></div>`;
 }
 
 function rCCProv(pg){
