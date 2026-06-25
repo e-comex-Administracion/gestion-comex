@@ -1065,7 +1065,7 @@ function calcPres(){
   setT('pr-total-desp-disp','USD '+fN2(despTotal)+' (neto '+fN2(despNeto)+' + IVA)');
   // ── Otros costos dinámicos ──
   const otros=presGetCostos();
-  const totalOtros=otros.reduce((a,c)=>a+(c.monto||0),0);
+  const totalOtros=otros.reduce((a,c)=>a+(c.es_iva?(c.monto||0)*1.21:(c.monto||0)),0);
   // ── Total erogación ──
   const totalUSD=precioUSD+totalFlete+seguro+totalTrib+bancario+despTotal+totalOtros;
   setV('pr-total_usd',totalUSD.toFixed(2));
