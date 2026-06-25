@@ -1168,26 +1168,46 @@ async function aprobarPres(i){
   const p=D.presupuestos[i];
   if(!p)return;
   if(!confirm('¿Aprobar el presupuesto '+p.nro+' y convertirlo en expediente activo?'))return;
-  // Find or create client
-  const cli=D.clientes.find(c=>c.cuit===p.cuit)||D.clientes.find(c=>c.razon===p.cliente)||{id:0,razon:p.cliente};
-  // Create expediente
+  // Buscar cliente
+  const cli=D.clientes.find(c=>c.cuit===p.cuit)||D.clientes.find(c=>c.razon===p.cliente)||{id:null,razon:p.cliente};
+  const tc=lTC()||1;
+  // Honorarios: si están en USD, convertir a ARS
+  const honUSD=p.honorarios||0;
+  const honARS=honUSD*tc;
+  // Fecha estimada de cobro: 30 días desde hoy
+  const hoy=new Date();
+  hoy.setDate(hoy.getDate()+30);
+  const fCobro=hoy.toISOString().slice(0,10);
+  // Crear expediente con todos los campos de rentabilidad
+  const expNro=p.nro.replace(/PRES/i,'EXP');
   const op={
-    id:nid(D.operaciones),
-    exp:p.nro.replace('PRES','EXP'),
-    cli_id:cli.id,cliente:cli.razon||p.cliente,
+    exp:expNro,
+    cli_id:cli.id||null,
+    cliente:cli.razon||p.cliente||'',
     merc:p.producto+(p.descripcion?' — '+p.descripcion.substring(0,50):''),
-    pais:'',tipo:v('pr-estado')||'Importación Definitiva para Consumo',
-    f_ap:new Date().toISOString().slice(0,10),f_cl:'',estado:'EN TRAMITE',
-    tc:lTC(),hon_usd:p.honorarios||0,hon_ars:0,
-    importe_ref:p.costo_final||p.total_usd||0,moneda_ref:'USD',
-    f_cobro_est:'',notas:'Generado desde presupuesto '+p.nro,
+    pais:p.pais||'',
+    tipo:'Importación Definitiva para Consumo',
+    f_ap:new Date().toISOString().slice(0,10),
+    f_cl:null,
+    estado:'EN TRAMITE',
+    tc:tc,
+    hon_usd:honUSD,
+    hon_ars:honARS,
+    importe_ref:p.costo_final||p.total_usd||0,
+    moneda_ref:'USD',
+    f_cobro_est:fCobro,
+    notas:'Generado desde presupuesto '+p.nro+'. Producto: '+(p.producto||'')+'. Pos. Aran.: '+(p.pos_aran||''),
   };
-  await save('operaciones',op,false);
-  // Update presupuesto
-  D.presupuestos[i].estado='Aprobado';
-  D.presupuestos[i].op_id=op.id;
-  // save handled above
-  toast('Presupuesto aprobado → Expediente '+op.exp+' creado ✓');
+  // 1. Guardar expediente
+  const okOp=await save('operaciones',op,false);
+  if(!okOp){toast('Error al crear expediente','er');return;}
+  // Obtener el ID del expediente recién creado
+  const opCreado=D.operaciones.find(o=>o.exp===expNro);
+  // 2. Actualizar presupuesto: estado Aprobado + vincular op_id
+  const presActualizado={...p, estado:'Aprobado', op_id:opCreado?.id||null};
+  const okPres=await save('presupuestos',presActualizado,true);
+  if(!okPres){toast('Expediente creado pero error al actualizar presupuesto','er');return;}
+  toast('✅ Presupuesto aprobado → Expediente '+expNro+' creado y activo');
   render('pres');
 }
 
