@@ -1005,6 +1005,12 @@ async function gFP(){
   const tars=mon==='USD'?total*tc:total,tusd=mon==='USD'?total:(tc>1?total/tc:0);
   const ep=v('fp-ep')||'PENDIENTE';
   const isEdit=editIdx>=0;
+  // Chequeo duplicado nro factura
+  const nroCheck=v('fp-nro').trim();
+  if(nroCheck&&!isEdit){
+    const dup=D.facturas_prov.find(f=>f.nro===nroCheck);
+    if(dup){if(!confirm('⚠️ Ya existe una factura de proveedor con el nro. '+nroCheck+' ('+dup.prov+').\n\n¿Guardás de todas formas?'))return;}
+  }
   const datos={id:isEdit?D.facturas_prov[editIdx].id:nid(D.facturas_prov),fe:v('fp-fe')||null,fv:v('fp-fv')||null,pv_id:pvId,prov:pv.razon||'',nro:v('fp-nro'),tipo_comp:v('fp-tc2')||'Factura A',tg_id:tgId||null,tg:tg.nom||'',n21,i21,n27,i27,n105,i105,n5,i5,n0,tiva,neto,total,mon,tars,tusd,tc_v:tc,asig:v('fp-asig')||'ESTRUCTURA',op_id:opId||null,op:op.exp||'',ep,notas:v('fp-notas')||''};
   const ok=await save('facturas_prov',datos,isEdit);if(!ok)return;
   editIdx=-1;cM('m-fp');
@@ -1563,83 +1569,361 @@ function _doPPT(i){
 
 // ═══ PDF UPLOAD MODULE ═══════════════════════
 let pdfFile=null;
+// ═══ PDF INTELIGENTE ═════════════════════════
+let pdfExtracted = null; // datos extraídos por Claude
+
 function rPDFs(pg,ac){
   const withPdf=D.facturas_prov.filter(f=>f.pdf_url);
-  const fpOpts=D.facturas_prov.map(f=>`<option value="${f.id}">${f.nro||'S/N'} — ${f.prov} — $ ${fN(f.tars)}</option>`).join('');
   pg.innerHTML=`
     <div class="card" style="margin-bottom:14px">
-      <div class="ch"><span class="cn">📎 Subir PDF y vincular a factura de proveedor</span></div>
+      <div class="ch"><span class="cn">🤖 Carga Inteligente de Factura PDF</span>
+        <span style="font-size:11px;color:var(--tx3)">Claude lee el PDF y pre-carga los datos automáticamente</span>
+      </div>
       <div class="cb">
-        <div id="pdf-drop" onclick="document.getElementById('pdf-inp').click()" ondragover="event.preventDefault();this.style.borderColor='var(--acc)'" ondragleave="this.style.borderColor='var(--br)'" ondrop="handlePdfDrop(event)" style="border:2px dashed var(--br);border-radius:8px;padding:36px;text-align:center;cursor:pointer;transition:border-color .2s">
-          <div style="font-size:36px;margin-bottom:8px">📄</div>
-          <div style="color:var(--tx2);font-size:13px">Hacé click o arrastrá el PDF acá<br><small style="color:var(--tx3)">Máximo 10MB</small></div>
+        <div id="pdf-drop" onclick="document.getElementById('pdf-inp').click()"
+          ondragover="event.preventDefault();this.style.borderColor='var(--acc)'"
+          ondragleave="this.style.borderColor='var(--br)'"
+          ondrop="handlePdfDrop(event)"
+          style="border:2px dashed var(--br);border-radius:8px;padding:40px;text-align:center;cursor:pointer;transition:border-color .2s">
+          <div style="font-size:40px;margin-bottom:10px">📄</div>
+          <div style="color:var(--tx2);font-size:14px;font-weight:600">Hacé click o arrastrá el PDF de la factura acá</div>
+          <div style="color:var(--tx3);font-size:12px;margin-top:4px">Claude va a leerla y detectar proveedor, importes y datos automáticamente · Máx 10MB</div>
         </div>
         <input type="file" id="pdf-inp" accept=".pdf" style="display:none" onchange="handlePdfSelect(event)">
-        <div id="pdf-preview" style="display:none;margin-top:12px;padding:10px;background:var(--s2);border-radius:7px;display:none;align-items:center;gap:10px">
-          <span style="font-size:22px">📄</span>
-          <div id="pdf-name" style="font-size:13px;color:var(--tx)"></div>
-        </div>
-        <div id="pdf-assign" style="display:none;margin-top:16px">
-          <div class="fg2" style="margin-bottom:12px">
-            <div class="fgrp"><label class="flbl">Asignar a Factura de Proveedor</label>
-              <select class="fc" id="pdf-fac-sel" onchange="onPdfFacSel()">${fpOpts}</select>
-            </div>
-            <div class="fgrp"><label class="flbl">Proveedor</label>
-              <input class="fc" id="pdf-prov-disp" readonly style="color:var(--tx2)">
-            </div>
-          </div>
-          <div style="display:flex;gap:8px">
-            <button class="btn bp" onclick="uploadPdf()">⬆️ Subir y Vincular</button>
-            <button class="btn bg2" onclick="clearPdf()">✕ Cancelar</button>
-          </div>
-        </div>
-        <div id="pdf-result" style="margin-top:12px"></div>
+        <div id="pdf-status" style="margin-top:14px"></div>
+        <div id="pdf-form-preview" style="display:none;margin-top:14px"></div>
       </div>
     </div>
     <div class="card">
       <div class="ch"><span class="cn">📋 Facturas con PDF adjunto (${withPdf.length})</span></div>
       <div class="cb">
-        ${withPdf.length?tbl(['Nro Factura','Proveedor','Fecha','Total ARS','PDF'],withPdf.map(f=>[f.nro||'-',f.prov,fF(f.fe),'$ '+fN(f.tars),`<a href="${f.pdf_url}" target="_blank" class="btn bg2 bs">📄 Ver PDF</a>`])):'<div class="es"><div class="ei">📭</div><p>Sin facturas con PDF adjunto aún</p></div>'}
+        ${withPdf.length?tbl(['Nro Factura','Proveedor','Fecha','Total ARS','PDF'],
+          withPdf.map(f=>[f.nro||'-',f.prov,fF(f.fe),'$ '+fN(f.tars),
+            `<a href="${f.pdf_url}" target="_blank" class="btn bg2 bs">📄 Ver PDF</a>`]))
+          :'<div class="es"><div class="ei">📭</div><p>Sin facturas con PDF adjunto aún</p></div>'}
       </div>
     </div>`;
-  // init select
-  onPdfFacSel();
 }
 
-function onPdfFacSel(){
-  const sel=$('pdf-fac-sel');if(!sel)return;
-  const fp=D.facturas_prov.find(f=>f.id===parseInt(sel.value));
-  if($('pdf-prov-disp'))$('pdf-prov-disp').value=fp?.prov||'';
+function handlePdfSelect(e){const f=e.target.files[0];if(f)procesarPdfInteligente(f);}
+function handlePdfDrop(e){
+  e.preventDefault();
+  if($('pdf-drop'))$('pdf-drop').style.borderColor='var(--br)';
+  const f=e.dataTransfer.files[0];
+  if(f&&f.type==='application/pdf') procesarPdfInteligente(f);
+  else toast('Solo se aceptan archivos PDF','er');
 }
 
-function handlePdfSelect(e){const f=e.target.files[0];if(f)setPdfFile(f);}
-function handlePdfDrop(e){e.preventDefault();if($('pdf-drop'))$('pdf-drop').style.borderColor='var(--br)';const f=e.dataTransfer.files[0];if(f&&f.type==='application/pdf')setPdfFile(f);else toast('Solo se aceptan archivos PDF','er');}
-function setPdfFile(f){
-  if(f.size>10*1024*1024){toast('El archivo supera los 10MB','er');return;}
-  pdfFile=f;
-  const prev=$('pdf-preview');if(prev){prev.style.display='flex';$('pdf-name').textContent=f.name+' ('+Math.round(f.size/1024)+' KB)';}
-  const assign=$('pdf-assign');if(assign)assign.style.display='block';
+async function procesarPdfInteligente(file){
+  if(file.size>10*1024*1024){toast('El archivo supera los 10MB','er');return;}
+  pdfFile=file;
+  pdfExtracted=null;
+
+  const statusEl=$('pdf-status');
+  const formEl=$('pdf-form-preview');
+  formEl.style.display='none';
+  statusEl.innerHTML=`<div style="display:flex;align-items:center;gap:10px;padding:14px;background:var(--s2);border-radius:8px">
+    <div style="width:20px;height:20px;border:3px solid var(--br);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0"></div>
+    <div>
+      <div style="font-weight:600;font-size:13px">📄 ${file.name}</div>
+      <div style="color:var(--tx3);font-size:12px">Claude está leyendo la factura...</div>
+    </div>
+  </div>`;
+
+  // Convertir PDF a base64
+  const base64 = await new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>res(r.result.split(',')[1]);
+    r.onerror=()=>rej(new Error('Error al leer el archivo'));
+    r.readAsDataURL(file);
+  });
+
+  // Lista de proveedores existentes para contexto
+  const provsList = D.proveedores.map(p=>`- ${p.razon} (CUIT: ${p.cuit||'sin cuit'})`).join('\n');
+  const tiposGasto = D.tipos_gasto.map(t=>`- ${t.id}: ${t.nom} (${t.cat})`).join('\n');
+
+  const prompt = `Analizá esta factura argentina y extraé los datos en formato JSON estricto.
+
+PROVEEDORES EXISTENTES EN EL SISTEMA:
+${provsList}
+
+TIPOS DE GASTO DISPONIBLES:
+${tiposGasto}
+
+Respondé ÚNICAMENTE con un JSON válido con esta estructura exacta (sin markdown, sin texto adicional):
+{
+  "razon_social": "nombre del proveedor emisor",
+  "cuit": "XX-XXXXXXXX-X",
+  "nro_factura": "XXXXX-XXXXXXXX",
+  "tipo_comp": "Factura A|Factura B|Factura C|Recibo",
+  "fecha_emision": "YYYY-MM-DD",
+  "fecha_vto": "YYYY-MM-DD o null",
+  "n21": 0,
+  "i21": 0,
+  "n105": 0,
+  "i105": 0,
+  "n0": 0,
+  "neto": 0,
+  "tiva": 0,
+  "total": 0,
+  "moneda": "ARS|USD",
+  "proveedor_match_id": null,
+  "tg_id_sugerido": null,
+  "tg_nombre_sugerido": "",
+  "confianza": "alta|media|baja",
+  "campos_dudosos": []
 }
+
+IMPORTANTE:
+- proveedor_match_id: ponés el id numérico si encontrás coincidencia exacta o muy similar con algún proveedor de la lista, sino null
+- tg_id_sugerido: el id del tipo de gasto más apropiado según el rubro del proveedor, sino null
+- campos_dudosos: lista de nombres de campos que no pudiste determinar con certeza
+- Si no podés leer algún campo, ponés null o 0`;
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-6',
+        max_tokens:1000,
+        messages:[{
+          role:'user',
+          content:[
+            {type:'document',source:{type:'base64',media_type:'application/pdf',data:base64}},
+            {type:'text',text:prompt}
+          ]
+        }]
+      })
+    });
+
+    if(!resp.ok) throw new Error('Error API: '+resp.status);
+    const data = await resp.json();
+    const txt = data.content?.find(b=>b.type==='text')?.text||'';
+    const clean = txt.replace(/```json|```/g,'').trim();
+    pdfExtracted = JSON.parse(clean);
+
+    mostrarPreviewFactura(pdfExtracted, file.name);
+
+  } catch(err){
+    statusEl.innerHTML=`<div class="al alw">❌ Error al procesar: ${err.message}. Intentá de nuevo.</div>`;
+  }
+}
+
+function mostrarPreviewFactura(d, fileName){
+  const statusEl=$('pdf-status');
+  const formEl=$('pdf-form-preview');
+
+  // Verificar duplicado de nro de factura
+  const dupFP = d.nro_factura ? D.facturas_prov.find(f=>f.nro===d.nro_factura) : null;
+  const dupFE = d.nro_factura ? D.facturas_emit.find(f=>f.nro===d.nro_factura) : null;
+  const dupWarning = (dupFP||dupFE)
+    ? `<div style="padding:10px 14px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;margin-bottom:12px;font-size:13px">
+        ⚠️ <strong>Posible duplicado:</strong> El nro. <strong>${d.nro_factura}</strong> ya existe en ${dupFP?'Facturas de Proveedores':'Facturas Emitidas'}. Verificá antes de guardar.
+       </div>` : '';
+
+  // Proveedor: ¿existe o es nuevo?
+  const pvMatch = d.proveedor_match_id ? D.proveedores.find(p=>p.id===d.proveedor_match_id) : null;
+  const pvOpts = D.proveedores.map(p=>`<option value="${p.id}" ${p.id===d.proveedor_match_id?'selected':''}>${p.razon}</option>`).join('');
+  const tgOpts = D.tipos_gasto.map(t=>`<option value="${t.id}" ${t.id===d.tg_id_sugerido?'selected':''}>${t.nom}</option>`).join('');
+
+  const confianzaColor = d.confianza==='alta'?'var(--gn)':d.confianza==='media'?'var(--org)':'var(--rd)';
+  const dudososHTML = d.campos_dudosos?.length
+    ? `<div style="padding:8px 12px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:6px;font-size:12px;margin-bottom:12px">
+        ⚠️ Claude no pudo determinar con certeza: <strong>${d.campos_dudosos.join(', ')}</strong>. Revisalos antes de guardar.
+       </div>` : '';
+
+  statusEl.innerHTML=`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--s2);border-radius:8px">
+    <span style="font-size:18px">📄</span>
+    <div style="flex:1;font-size:13px;font-weight:600">${fileName}</div>
+    <span style="font-size:12px;color:${confianzaColor};font-weight:700">Confianza: ${d.confianza?.toUpperCase()}</span>
+    <button class="btn bg2 bs" onclick="clearPdf()">✕ Cancelar</button>
+  </div>`;
+
+  formEl.style.display='block';
+  formEl.innerHTML=`
+    ${dupWarning}
+    ${dudososHTML}
+    <div style="background:var(--s2);border-radius:10px;padding:16px;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">
+        🔍 Datos extraídos — Revisá y corregí si es necesario
+      </div>
+      <div class="fg2">
+        <div class="fgrp">
+          <label class="flbl">Proveedor ${pvMatch?'<span style="color:var(--gn)">✓ encontrado</span>':'<span style="color:var(--org)">⚠ no encontrado — se dará de alta</span>'}</label>
+          <select class="fc" id="pdf-pv-sel" onchange="onPdfPvChange()">
+            <option value="">-- Nuevo proveedor --</option>
+            ${pvOpts}
+          </select>
+        </div>
+        <div class="fgrp"><label class="flbl">Razón Social</label>
+          <input class="fc" id="pdf-razon" value="${d.razon_social||''}">
+        </div>
+        <div class="fgrp"><label class="flbl">CUIT</label>
+          <input class="fc" id="pdf-cuit" value="${d.cuit||''}">
+        </div>
+        <div class="fgrp"><label class="flbl">Tipo Comprobante</label>
+          <select class="fc" id="pdf-tipo_comp">
+            ${['Factura A','Factura B','Factura C','Recibo','Liquidación'].map(t=>`<option ${t===d.tipo_comp?'selected':''}>${t}</option>`).join('')}
+          </select>
+        </div>
+        <div class="fgrp"><label class="flbl">Nro. Factura</label>
+          <input class="fc" id="pdf-nro" value="${d.nro_factura||''}">
+        </div>
+        <div class="fgrp"><label class="flbl">Fecha Emisión</label>
+          <input class="fc" type="date" id="pdf-fe" value="${d.fecha_emision||''}">
+        </div>
+        <div class="fgrp"><label class="flbl">Fecha Vto.</label>
+          <input class="fc" type="date" id="pdf-fv" value="${d.fecha_vto||''}">
+        </div>
+        <div class="fgrp"><label class="flbl">Tipo de Gasto</label>
+          <select class="fc" id="pdf-tg_id">
+            <option value="">-- Seleccionar --</option>
+            ${tgOpts}
+          </select>
+        </div>
+        <div class="fgrp"><label class="flbl">Forma de Pago</label>
+          <select class="fc" id="pdf-cpago">
+            <option>Transferencia Bancaria</option>
+            <option>Débito Automático</option>
+            <option>Cheque</option>
+            <option>Efectivo</option>
+          </select>
+        </div>
+        <div class="fgrp"><label class="flbl">Moneda</label>
+          <select class="fc" id="pdf-mon">
+            <option ${d.moneda==='ARS'?'selected':''}>ARS</option>
+            <option ${d.moneda==='USD'?'selected':''}>USD</option>
+          </select>
+        </div>
+        <div class="fgrp"><label class="flbl">Neto</label>
+          <input class="fc" type="number" id="pdf-neto" value="${d.neto||0}">
+        </div>
+        <div class="fgrp"><label class="flbl">IVA 21% (monto)</label>
+          <input class="fc" type="number" id="pdf-i21" value="${d.i21||0}">
+        </div>
+        <div class="fgrp"><label class="flbl">Total ARS</label>
+          <input class="fc" type="number" id="pdf-total" value="${d.total||0}" style="color:var(--rd);font-weight:700">
+        </div>
+        <div class="fgrp"><label class="flbl">TC (tipo de cambio)</label>
+          <input class="fc" type="number" id="pdf-tc" value="${lTC()||0}">
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn bp" onclick="confirmarCargaPdf()">💾 Confirmar y Guardar Factura</button>
+      <button class="btn bg2" onclick="clearPdf()">✕ Cancelar</button>
+    </div>
+    <div id="pdf-result" style="margin-top:12px"></div>`;
+}
+
+function onPdfPvChange(){
+  const sel=$('pdf-pv-sel');
+  if(!sel||!sel.value) return;
+  const pv=D.proveedores.find(p=>p.id===parseInt(sel.value));
+  if(!pv) return;
+  if($('pdf-razon'))$('pdf-razon').value=pv.razon;
+  if($('pdf-cuit'))$('pdf-cuit').value=pv.cuit||'';
+  if($('pdf-tg_id')&&pv.tg_id)$('pdf-tg_id').value=pv.tg_id;
+  if($('pdf-cpago')&&pv.cpago)$('pdf-cpago').value=pv.cpago;
+}
+
+async function confirmarCargaPdf(){
+  const razon=($('pdf-razon')?.value||'').trim();
+  if(!razon){toast('Ingresá la razón social del proveedor','er');return;}
+  const nro=($('pdf-nro')?.value||'').trim();
+
+  // Chequeo duplicado en tiempo real
+  if(nro){
+    const dupFP=D.facturas_prov.find(f=>f.nro===nro);
+    const dupFE=D.facturas_emit.find(f=>f.nro===nro);
+    if(dupFP||dupFE){
+      if(!confirm(`⚠️ El nro. de factura ${nro} ya existe en el sistema.\n\n¿Querés guardarla de todas formas?`)) return;
+    }
+  }
+
+  const btn=document.querySelector('#pdf-form-preview .btn.bp');
+  if(btn){btn.textContent='⏳ Guardando...';btn.disabled=true;}
+
+  try {
+    // 1. Resolver proveedor: existente o nuevo
+    let pvId=parseInt($('pdf-pv-sel')?.value)||null;
+    let pvRazon=razon;
+    const cuit=($('pdf-cuit')?.value||'').trim();
+    const tgId=parseInt($('pdf-tg_id')?.value)||null;
+    const tg=D.tipos_gasto.find(t=>t.id===tgId)||{};
+    const cpago=($('pdf-cpago')?.value)||'Transferencia Bancaria';
+
+    if(!pvId){
+      // Crear proveedor nuevo
+      const nuevoPv={razon,cuit,iva:'Responsable Inscripto',tg_id:tgId||null,tg:tg.nom||'',
+        tel:'',email:'',cpago,moneda:'ARS',activo:'SI',notas:'Alta automática desde PDF'};
+      const okPv=await save('proveedores',nuevoPv,false);
+      if(!okPv) throw new Error('Error al crear proveedor');
+      const pvCreado=D.proveedores.find(p=>p.razon===razon);
+      pvId=pvCreado?.id||null;
+      pvRazon=razon;
+      toast('Proveedor "'+razon+'" dado de alta ✓');
+    } else {
+      pvRazon=D.proveedores.find(p=>p.id===pvId)?.razon||razon;
+    }
+
+    // 2. Construir factura
+    const neto=parseFloat($('pdf-neto')?.value)||0;
+    const i21=parseFloat($('pdf-i21')?.value)||0;
+    const total=parseFloat($('pdf-total')?.value)||0;
+    const tc=parseFloat($('pdf-tc')?.value)||lTC()||1;
+    const mon=$('pdf-mon')?.value||'ARS';
+    const tars=mon==='USD'?total*tc:total;
+    const tusd=mon==='USD'?total:(tc>1?total/tc:0);
+
+    const factura={
+      fe:$('pdf-fe')?.value||null,
+      fv:$('pdf-fv')?.value||null,
+      pv_id:pvId,
+      prov:pvRazon,
+      nro,
+      tipo_comp:$('pdf-tipo_comp')?.value||'Factura A',
+      tg_id:tgId||null,
+      tg:tg.nom||'',
+      n21:neto,i21,n105:0,i105:0,n5:0,i5:0,n0:0,
+      tiva:i21,neto,total,tars,tusd,tc_v:tc,
+      mon,asig:tg.aplica||'ESTRUCTURA',
+      op_id:null,op:'',ep:'PENDIENTE',
+      notas:'Cargada desde PDF',pdf_url:''
+    };
+
+    // 3. Guardar factura
+    const okFac=await save('facturas_prov',factura,false);
+    if(!okFac) throw new Error('Error al guardar la factura');
+
+    // 4. Subir el PDF y vincularlo
+    const facCreada=D.facturas_prov.find(f=>f.nro===nro&&f.prov===pvRazon);
+    if(facCreada&&pdfFile){
+      const fname='facturas/'+facCreada.id+'_'+Date.now()+'.pdf';
+      const {error:upErr}=await sb.storage.from('facturas-pdf').upload(fname,pdfFile,{contentType:'application/pdf',upsert:true});
+      if(!upErr){
+        const {data:{publicUrl}}=sb.storage.from('facturas-pdf').getPublicUrl(fname);
+        await sb.from('facturas_prov').update({pdf_url:publicUrl}).eq('id',facCreada.id);
+        await loadT('facturas_prov');
+      }
+    }
+
+    if($('pdf-result'))$('pdf-result').innerHTML=`<div class="al ali">✅ Factura guardada correctamente · Proveedor: ${pvRazon} · Nro: ${nro}</div>`;
+    toast('✅ Factura cargada desde PDF');
+    setTimeout(()=>{clearPdf();render('pdfs');},2000);
+
+  } catch(err){
+    if(btn){btn.textContent='💾 Confirmar y Guardar Factura';btn.disabled=false;}
+    if($('pdf-result'))$('pdf-result').innerHTML=`<div class="al alw">❌ Error: ${err.message}</div>`;
+  }
+}
+
 function clearPdf(){
-  pdfFile=null;
+  pdfFile=null;pdfExtracted=null;
   if($('pdf-inp'))$('pdf-inp').value='';
-  const prev=$('pdf-preview');if(prev)prev.style.display='none';
-  const assign=$('pdf-assign');if(assign)assign.style.display='none';
-  if($('pdf-result'))$('pdf-result').innerHTML='';
-}
-async function uploadPdf(){
-  if(!pdfFile){toast('Seleccioná un PDF primero','er');return;}
-  const facId=parseInt($('pdf-fac-sel')?.value);
-  if(!facId){toast('Seleccioná una factura','er');return;}
-  const fname='facturas/'+facId+'_'+Date.now()+'.pdf';
-  const {data,error}=await sb.storage.from('facturas-pdf').upload(fname,pdfFile,{contentType:'application/pdf',upsert:true});
-  if(error){if($('pdf-result'))$('pdf-result').innerHTML='<div class="al alw">❌ Error: '+error.message+'</div>';return;}
-  const {data:{publicUrl}}=sb.storage.from('facturas-pdf').getPublicUrl(fname);
-  await sb.from('facturas_prov').update({pdf_url:publicUrl}).eq('id',facId);
-  await loadT('facturas_prov');
-  if($('pdf-result'))$('pdf-result').innerHTML='<div class="al ali">✅ PDF subido y vinculado · <a href="'+publicUrl+'" target="_blank" style="color:var(--acc)">Ver PDF</a></div>';
-  clearPdf();
-  render('pdfs');
+  if($('pdf-status'))$('pdf-status').innerHTML='';
+  if($('pdf-form-preview')){$('pdf-form-preview').style.display='none';$('pdf-form-preview').innerHTML='';}
 }
 
 // ═══ INIT ════════════════════════════════════
