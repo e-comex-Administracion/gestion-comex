@@ -1681,26 +1681,25 @@ IMPORTANTE:
 - Si no podés leer algún campo, ponés null o 0`;
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages',{
+    // Llamar a Supabase Edge Function (evita CORS)
+    const {data:{session}}=await sb.auth.getSession();
+    const token=session?.access_token||'';
+    const resp = await fetch('https://qmbokvjtomrwezbklkay.supabase.co/functions/v1/leer-factura-pdf',{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        model:'claude-sonnet-4-6',
-        max_tokens:1000,
-        messages:[{
-          role:'user',
-          content:[
-            {type:'document',source:{type:'base64',media_type:'application/pdf',data:base64}},
-            {type:'text',text:prompt}
-          ]
-        }]
-      })
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':'Bearer '+token
+      },
+      body:JSON.stringify({pdf_base64:base64, prompt})
     });
 
-    if(!resp.ok) throw new Error('Error API: '+resp.status);
+    if(!resp.ok){
+      const errTxt=await resp.text();
+      throw new Error('Error Edge Function: '+resp.status+' — '+errTxt.substring(0,100));
+    }
     const data = await resp.json();
-    const txt = data.content?.find(b=>b.type==='text')?.text||'';
-    const clean = txt.replace(/```json|```/g,'').trim();
+    if(data.error) throw new Error(data.error);
+    const clean = (data.text||'').replace(/```json|```/g,'').trim();
     pdfExtracted = JSON.parse(clean);
 
     mostrarPreviewFactura(pdfExtracted, file.name);
