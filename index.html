@@ -500,10 +500,10 @@ function rDash(pg){
     </div>
     <div class="card"><div class="ch"><span class="cn">💸 Fact. Proveedores Pendientes de Pago</span></div><div class="cb">
       ${tbl(['Proveedor','Vence','Total','Expediente'],pp.slice(0,8).map(f=>[
-        `<span class="tdm">${f.prov}</span>`,
+        `<span class="tdm">${provDeId(f.pv_id)||f.prov}</span>`,
         `<span class="tdc" style="color:${f.fv&&new Date(f.fv)<hoy?'var(--rd)':'var(--tx)'}">${fF(f.fv)}</span>`,
         `<span class="tdc rn">$ ${fN(f.tars)}</span>`,
-        f.op?`<span style="font-size:11px;color:var(--acc)">${f.op}</span>`:`<span style="color:var(--tx3);font-size:11px">Estructura</span>`
+        (expDeId(f.op_id)||f.op)?`<span style="font-size:11px;color:var(--acc)">${expDeId(f.op_id)||f.op}</span>`:`<span style="color:var(--tx3);font-size:11px">Estructura</span>`
       ]),'Sin facturas pendientes')}</div>
     </div>
   </div>`;
@@ -551,13 +551,18 @@ function rExps(pg,ac){
       ac2('operaciones',i)
     ];
   });
-  pg.innerHTML=`<div class="card"><div class="ch">
-    <span class="cn">Expedientes de Importación</span>
-    <span style="font-size:11px;color:var(--tx3)">Hon. E-COMEX = rentabilidad real de la operación</span>
-  </div><div class="cb">
-    ${fbar('exps',[{k:'fecha',l:'Fecha apertura'},{k:'exp',l:'Expediente'},{k:'cliente',l:'Cliente'},{k:'estado',l:'Estado'}],'Buscar expediente, cliente, mercadería...')}
-    ${tbl(['Expediente','Cliente','Mercadería','Apertura','Estado','Facturado','Cobrado','Hon. E-COMEX ✦','Est. Fin.','F.Cobro Est.','Acciones'],rows)}
-  </div></div>`;
+  try {
+    pg.innerHTML=`<div class="card"><div class="ch">
+      <span class="cn">Expedientes de Importación</span>
+      <span style="font-size:11px;color:var(--tx3)">Hon. E-COMEX = rentabilidad real de la operación</span>
+    </div><div class="cb">
+      ${fbar('exps',[{k:'fecha',l:'Fecha apertura'},{k:'exp',l:'Expediente'},{k:'cliente',l:'Cliente'},{k:'estado',l:'Estado'}],'Buscar expediente, cliente, mercadería...')}
+      ${tbl(['Expediente','Cliente','Mercadería','Apertura','Estado','Facturado','Cobrado','Hon. E-COMEX ✦','Est. Fin.','F.Cobro Est.','Acciones'],rows)}
+    </div></div>`;
+  } catch(e) {
+    pg.innerHTML=`<div class="card"><div class="cb"><div class="al alw">Error al cargar expedientes: ${e.message}</div></div></div>`;
+    console.error('rExps error:',e);
+  }
 }
 
 function vExp(idx){
@@ -891,7 +896,7 @@ function rRent(pg){
 }
 
 function rCCProv(pg){
-  const provNames=[...new Set(D.facturas_prov.map(f=>f.prov))].sort();
+  const provNames=[...new Set(D.facturas_prov.map(f=>provDeId(f.pv_id)||f.prov))].sort();
   pg.innerHTML=`<div class="card" style="margin-bottom:14px"><div class="ch"><span class="cn">Filtros</span></div><div class="cb">
     <div class="fg">
       <div class="fgrp"><label class="flbl">Proveedor</label><select class="fc" id="ccpf-pv" onchange="rCCPD()"><option value="">Todos</option>${provNames.map(n=>`<option value="${n}">${n}</option>`).join('')}</select></div>
@@ -908,17 +913,35 @@ function rCCProv(pg){
 function rCCPD(){
   let fps=[...D.facturas_prov];
   const fp=v('ccpf-pv'),fe=v('ccpf-ep'),fa=v('ccpf-as'),fd=v('ccpf-de'),fh=v('ccpf-ha');
-  if(fp)fps=fps.filter(f=>f.prov===fp);if(fe)fps=fps.filter(f=>f.ep===fe);if(fa)fps=fps.filter(f=>f.asig===fa);if(fd)fps=fps.filter(f=>f.fe>=fd);if(fh)fps=fps.filter(f=>f.fe<=fh);
+  // Filtrar por proveedor usando nombre resuelto en tiempo real
+  if(fp)fps=fps.filter(f=>(provDeId(f.pv_id)||f.prov)===fp);
+  if(fe)fps=fps.filter(f=>f.ep===fe);
+  if(fa)fps=fps.filter(f=>f.asig===fa);
+  if(fd)fps=fps.filter(f=>f.fe>=fd);
+  if(fh)fps=fps.filter(f=>f.fe<=fh);
   const tF=fps.reduce((a,f)=>a+(f.tars||0),0),tP=fps.filter(f=>f.ep==='PAGADA').reduce((a,f)=>a+(f.tars||0),0),tPd=fps.filter(f=>f.ep==='PENDIENTE').reduce((a,f)=>a+(f.tars||0),0);
   if($('ccps'))$('ccps').innerHTML=sg([{l:'Facturas',v:fps.length,s:'$ '+fN(tF),c:'bl'},{l:'Pagado',v:'$ '+fN(tP),c:'gn'},{l:'Pendiente',v:'$ '+fN(tPd),c:'og'},{l:'Saldo',v:'$ '+fN(tF-tP),c:tF-tP<=0?'gn':'pu'}]);
   if($('ccpt'))$('ccpt').textContent=fp?'CC — '+fp:'CC Proveedores';
   fps.sort((a,b)=>a.fe>b.fe?1:-1);let saldo=0;
-  const rows=fps.map(f=>{if(f.ep==='PENDIENTE')saldo+=(f.tars||0);return[`<span class="tdc">${fF(f.fe)}</span>`,`<span class="tdc">${fF(f.fv)}</span>`,`<span class="tdm">${f.prov}</span>`,`<span class="tdc" style="font-size:10px">${f.nro}</span>`,f.tg,`<span class="bg ${f.asig==='OPERACION'?'bgb':'bgp'}">${f.asig}</span>`,f.op||'-',`<span class="tdc rn">$ ${fN(f.tars)}</span>`,eB(f.ep),`<span class="tdc ${saldo>0?'rn':'rp'}">$ ${fN(saldo)}</span>`];});
+  const rows=fps.map(f=>{
+    const provNombre=provDeId(f.pv_id)||f.prov;
+    const expNombre=expDeId(f.op_id)||f.op||'-';
+    if(f.ep==='PENDIENTE')saldo+=(f.tars||0);
+    return[
+      `<span class="tdc">${fF(f.fe)}</span>`,`<span class="tdc">${fF(f.fv)}</span>`,
+      `<span class="tdm">${provNombre}</span>`,
+      `<span class="tdc" style="font-size:10px">${f.nro}</span>`,
+      f.tg,`<span class="bg ${f.asig==='OPERACION'?'bgb':'bgp'}">${f.asig}</span>`,
+      expNombre,
+      `<span class="tdc rn">$ ${fN(f.tars)}</span>`,eB(f.ep),
+      `<span class="tdc ${saldo>0?'rn':'rp'}">$ ${fN(saldo)}</span>`
+    ];
+  });
   if($('ccpd'))$('ccpd').innerHTML=tbl(['Fecha','Vence','Proveedor','Nro. Factura','Tipo Gasto','Asignación','Operación','Importe','Estado','Saldo Acum.'],rows,'Sin registros');
 }
 
 function rCCCli(pg){
-  const cliNames=[...new Set(D.facturas_emit.map(f=>f.cliente))].sort();
+  const cliNames=[...new Set(D.facturas_emit.map(f=>clienteDeId(f.cl_id)||f.cliente))].sort();
   const opNames=D.operaciones.map(o=>`<option value="${o.exp}">${o.exp} — ${o.cliente}</option>`).join('');
   pg.innerHTML=`<div class="card" style="margin-bottom:14px"><div class="ch"><span class="cn">Filtros</span></div><div class="cb">
     <div class="fg">
@@ -936,12 +959,28 @@ function rCCCli(pg){
 function rCCCD(){
   let fes=[...D.facturas_emit];
   const fc=v('cccf-cl'),fe=v('cccf-ec'),fo=v('cccf-op'),fd=v('cccf-de'),fh=v('cccf-ha');
-  if(fc)fes=fes.filter(f=>f.cliente===fc);if(fe)fes=fes.filter(f=>f.ec===fe);if(fo)fes=fes.filter(f=>f.op===fo);if(fd)fes=fes.filter(f=>f.fe>=fd);if(fh)fes=fes.filter(f=>f.fe<=fh);
+  if(fc)fes=fes.filter(f=>(clienteDeId(f.cl_id)||f.cliente)===fc);
+  if(fe)fes=fes.filter(f=>f.ec===fe);
+  if(fo)fes=fes.filter(f=>(expDeId(f.op_id)||f.op)===fo);
+  if(fd)fes=fes.filter(f=>f.fe>=fd);
+  if(fh)fes=fes.filter(f=>f.fe<=fh);
   const tF=fes.reduce((a,f)=>a+(f.tars||0),0),tC=fes.filter(f=>f.ec==='COBRADA').reduce((a,f)=>a+(f.tars||0),0),tPd=fes.filter(f=>f.ec==='PENDIENTE').reduce((a,f)=>a+(f.tars||0),0);
   if($('cccs'))$('cccs').innerHTML=sg([{l:'Facturas',v:fes.length,s:'$ '+fN(tF),c:'bl'},{l:'Cobrado',v:'$ '+fN(tC),c:'gn'},{l:'Por Cobrar',v:'$ '+fN(tPd),c:'og'},{l:'USD Total',v:fU(fes.reduce((a,f)=>a+(f.tusd||0),0)),c:'pu'}]);
   if($('ccct'))$('ccct').textContent=fc?'CC — '+fc:'CC Clientes';
   fes.sort((a,b)=>a.fe>b.fe?1:-1);let saldo=0;
-  const rows=fes.map(f=>{if(f.ec==='PENDIENTE')saldo+=(f.tars||0);return[`<span class="tdc">${fF(f.fe)}</span>`,`<span class="tdc">${fF(f.fv)}</span>`,`<span class="tdm">${f.cliente}</span>`,`<span class="tdc" style="font-size:10px">${f.nro}</span>`,f.op||'-',(f.concepto||"").substring(0,28)+'...',`<span class="tdc rp">$ ${fN(f.tars)}</span>`,fU(f.tusd),eB(f.ec),`<span class="tdc ${saldo>0?'rn':'rp'}">$ ${fN(saldo)}</span>`];});
+  const rows=fes.map(f=>{
+    const clienteNombre=clienteDeId(f.cl_id)||f.cliente;
+    const expNombre=expDeId(f.op_id)||f.op||'-';
+    if(f.ec==='PENDIENTE')saldo+=(f.tars||0);
+    return[
+      `<span class="tdc">${fF(f.fe)}</span>`,`<span class="tdc">${fF(f.fv)}</span>`,
+      `<span class="tdm">${clienteNombre}</span>`,
+      `<span class="tdc" style="font-size:10px">${f.nro}</span>`,
+      expNombre,(f.concepto||"").substring(0,28)+'...',
+      `<span class="tdc rp">$ ${fN(f.tars)}</span>`,fU(f.tusd),eB(f.ec),
+      `<span class="tdc ${saldo>0?'rn':'rp'}">$ ${fN(saldo)}</span>`
+    ];
+  });
   if($('cccd'))$('cccd').innerHTML=tbl(['Fecha','Vence','Cliente','Nro. ARCA','Operación','Concepto','Total ARS','Total USD','Estado','Saldo Acum.'],rows,'Sin registros');
 }
 
