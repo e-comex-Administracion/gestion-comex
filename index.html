@@ -523,6 +523,8 @@ function rExps(pg,ac){
     const totalCob=cobros.reduce((a,c)=>a+(c.mars||0),0);
     const honARS=rentExp(o);
     const esEst=rentExpEst(o);
+    // Resolver cliente en tiempo real
+    const clienteDisplay=clienteDeId(o.cli_id)||o.cliente||'-';
 
     // Semáforo
     let sem;
