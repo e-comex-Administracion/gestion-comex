@@ -285,12 +285,29 @@ function rentExpEst(o){
 function eB(e){const m={PAGADA:'bgg',COBRADA:'bgg',CERRADA:'bgg',SI:'bgg',PENDIENTE:'bgo','EN CURSO':'bgb','EN TRAMITE':'bgb',NO:'bgr',CANCELADA:'bgr',VENCIDA:'bgr'};return`<span class="bg ${m[e]||'bgp'}">${e||'-'}</span>`;}
 function toast(msg,t='ok'){const el=$('toast');el.textContent=msg;el.className='show '+t;setTimeout(()=>el.className='',3000);}
 function cM(id){$(id).classList.remove('show');}
-function oM(id){
-  if(id==='m-fp'){oPv('fp-pv');oTG('fp-tg');oOp('fp-op');if($('fp-tc')&&!$('fp-tc').value)$('fp-tc').value=lTC();}
-  if(id==='m-fe'){oCl('fe-cl');oOp('fe-op',0,editIdx<0);if($('fe-tc')&&!$('fe-tc').value)$('fe-tc').value=lTC();}
-  if(id==='m-pg'){oFP('pg-fac');oPv('pg-pv');}
-  if(id==='m-cb'){oFE('cb-fac');oCl('cb-cl');}
-  if(id==='m-ex'){oCl('ex-cl');}
+function oM(id,vals={}){
+  // Llenar selects CON el valor correcto desde el inicio
+  if(id==='m-fp'){
+    oPv('fp-pv',vals.pv_id||'');
+    oTG('fp-tg',vals.tg_id||'');
+    oOp('fp-op',vals.op_id||'');
+    if($('fp-tc')&&!vals.tc)$('fp-tc').value=lTC();
+  }
+  if(id==='m-fe'){
+    oCl('fe-cl',vals.cl_id||'');
+    oOp('fe-op',vals.op_id||'',editIdx<0);
+    if($('fe-tc')&&!vals.tc_v)$('fe-tc').value=lTC();
+  }
+  if(id==='m-pg'){
+    oFP('pg-fac',vals.fac_id||'',!vals.fac_id);
+    oPv('pg-pv',vals.pv_id||'');
+  }
+  if(id==='m-cb'){
+    oFE('cb-fac',vals.fac_id||'',!vals.fac_id);
+    oCl('cb-cl',vals.cl_id||'');
+  }
+  if(id==='m-ex'){oCl('ex-cl',vals.cli_id||'');}
+  if(id==='m-pv'){oTG('pv-tg',vals.tg_id||'');}
   if(id==='m-tg'){const dl=$('tg-dl');if(dl){const c=[...new Set(D.tipos_gasto.map(t=>t.cat))];dl.innerHTML=c.map(x=>`<option value="${x}">`).join('');}}
   $(id).classList.add('show');
 }
@@ -1020,13 +1037,14 @@ function mapImp(k,r,i){
 function edit(tabla,idx){
   const r=D[tabla][idx];if(!r)return;editIdx=idx;editTabla=tabla;
   const m={
-    proveedores:()=>{rstPv(r);oM('m-pv');},
-    clientes:()=>{rstCl(r);oM('m-cl');},
-    operaciones:()=>{rstEx(r);oM('m-ex');},
-    facturas_prov:()=>{rstFP(r);oM('m-fp');},
-    facturas_emit:()=>{rstFE(r);oM('m-fe');},
-    pagos:()=>{rstPg(r);oM('m-pg');},
-    cobranzas:()=>{rstCb(r);oM('m-cb');},
+    // oM primero con los valores para llenar selects, luego rst* para setear el resto
+    proveedores:()=>{oM('m-pv',r);rstPv(r);},
+    clientes:()=>{oM('m-cl',r);rstCl(r);},
+    operaciones:()=>{oM('m-ex',r);rstEx(r);},
+    facturas_prov:()=>{oM('m-fp',r);rstFP(r);},
+    facturas_emit:()=>{oM('m-fe',r);rstFE(r);},
+    pagos:()=>{oM('m-pg',r);rstPg(r);},
+    cobranzas:()=>{oM('m-cb',r);rstCb(r);},
     tipos_gasto:()=>{if($('tg-cat'))$('tg-cat').value=r.cat||'';if($('tg-nom'))$('tg-nom').value=r.nom||'';if($('tg-aplica'))$('tg-aplica').value=r.aplica||'AMBOS';oM('m-tg');},
     tipo_cambio:()=>{if($('tc-f'))$('tc-f').value=r.fecha||'';if($('tc-of'))$('tc-of').value=r.of||0;if($('tc-mep'))$('tc-mep').value=r.mep||0;if($('tc-ref'))$('tc-ref').value=r.ref||0;if($('tc-fu'))$('tc-fu').value=r.fuente||'BCRA';if($('tc-no'))$('tc-no').value=r.notas||'';oM('m-tc');},
   };
@@ -1034,13 +1052,13 @@ function edit(tabla,idx){
 }
 
 // ═══ FORM RESET HELPERS ═══════════════════════
-function rstPv(r={}){editIdx=r.id?D.proveedores.findIndex(x=>x.id===r.id):-1;['razon','cuit','iva','tel','email','cpago','moneda','activo','notas'].forEach(f=>{const el=$('pv-'+f);if(el)el.value=r[f]||'';});oTG('pv-tg',r.tg_id||'');}
-function rstCl(r={}){editIdx=r.id?D.clientes.findIndex(x=>x.id===r.id):-1;['razon','cuit','iva','contacto','tel','email','rubro','cpago','moneda','activo','notas'].forEach(f=>{const el=$('cl-'+f);if(el)el.value=r[f]||'';});}
-function rstEx(r={}){['exp','pais','tipo','f_ap','f_cl','estado','tc','hon_usd','hon_ars','importe_ref','f_cobro_est','notas'].forEach(f=>{const el=$('ex-'+f);if(el)el.value=r[f]||'';});if($('ex-moneda_ref'))$('ex-moneda_ref').value=r.moneda_ref||'USD';oCl('ex-cl',r.cli_id||'');}
-function rstFP(r={}){oPv('fp-pv',r.pv_id||'');oTG('fp-tg',r.tg_id||'');oOp('fp-op',r.op_id||'');['fe','fv','nro','asig','ep','notas'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||'';});if($('fp-tc2'))$('fp-tc2').value=r.tc||'Factura A';['n21','n105','n0'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||0;});if($('fp-mon'))$('fp-mon').value=r.mon||'ARS';if($('fp-tc'))$('fp-tc').value=r.tc||lTC();cIVA('fp');}
-function rstFE(r={}){oCl('fe-cl',r.cl_id||'');oOp('fe-op',r.op_id||'',editIdx<0);['fe','fv','nro','concepto','ec','notas'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||'';});if($('fe-tc2'))$('fe-tc2').value=r.tc||'Factura A';['n21','n27','n105','n5','n0'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||0;});if($('fe-reint'))$('fe-reint').value=r.reint||0;if($('fe-mon'))$('fe-mon').value=r.mon||'USD';if($('fe-tc'))$('fe-tc').value=r.tc_v||lTC();cIVA('fe');}
-function rstPg(r={}){oFP('pg-fac',r.fac_id||'',!r.id);oPv('pg-pv',r.pv_id||'');if($('pg-fp'))$('pg-fp').value=r.fp||'';if($('pg-forma')){$('pg-forma').value=r.forma||'';tgChq('pg');}['banco','ref','f_ac','mars','musd','mon','chqb','chqn','chqf','obs'].forEach(f=>{const el=$('pg-'+f);if(el)el.value=r[f]||'';});}
-function rstCb(r={}){oFE('cb-fac',r.fac_id||'',!r.id);oCl('cb-cl',r.cl_id||'');if($('cb-fc'))$('cb-fc').value=r.fc||'';if($('cb-forma')){$('cb-forma').value=r.forma||'';tgChq('cb');}['banco','ref','f_ac','mars','musd','mon','chqb','chqn','chqf','obs'].forEach(f=>{const el=$('cb-'+f);if(el)el.value=r[f]||'';});}
+function rstPv(r={}){editIdx=r.id?D.proveedores.findIndex(x=>x.id===r.id):-1;['razon','cuit','iva','tel','email','cpago','moneda','activo','notas'].forEach(f=>{const el=$('pv-'+f);if(el)el.value=r[f]||'';});oTG('pv-tg',r.tg_id||'');if(r.iva&&$('pv-iva'))$('pv-iva').value=r.iva;if(r.activo&&$('pv-activo'))$('pv-activo').value=r.activo;if(r.moneda&&$('pv-moneda'))$('pv-moneda').value=r.moneda;}
+function rstCl(r={}){editIdx=r.id?D.clientes.findIndex(x=>x.id===r.id):-1;['razon','cuit','iva','contacto','tel','email','rubro','cpago','moneda','activo','notas'].forEach(f=>{const el=$('cl-'+f);if(el)el.value=r[f]||'';});if(r.iva&&$('cl-iva'))$('cl-iva').value=r.iva;if(r.activo&&$('cl-activo'))$('cl-activo').value=r.activo;if(r.moneda&&$('cl-moneda'))$('cl-moneda').value=r.moneda;}
+function rstEx(r={}){['exp','pais','f_ap','f_cl','tc','hon_usd','hon_ars','importe_ref','f_cobro_est','notas'].forEach(f=>{const el=$('ex-'+f);if(el)el.value=r[f]||'';});if($('ex-tipo'))$('ex-tipo').value=r.tipo||'Importación Definitiva para Consumo';if($('ex-estado'))$('ex-estado').value=r.estado||'EN TRAMITE';if($('ex-moneda_ref'))$('ex-moneda_ref').value=r.moneda_ref||'USD';oCl('ex-cl',r.cli_id||'');}
+function rstFP(r={}){oPv('fp-pv',r.pv_id||'');oTG('fp-tg',r.tg_id||'');oOp('fp-op',r.op_id||'');['fe','fv','nro','notas'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||'';});if($('fp-asig'))$('fp-asig').value=r.asig||'ESTRUCTURA';if($('fp-ep'))$('fp-ep').value=r.ep||'PENDIENTE';if($('fp-tc2'))$('fp-tc2').value=r.tipo_comp||r.tc||'Factura A';['n21','n105','n27','n5','n0'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||0;});if($('fp-mon'))$('fp-mon').value=r.mon||'ARS';if($('fp-tc'))$('fp-tc').value=r.tc||lTC();cIVA('fp');}
+function rstFE(r={}){oCl('fe-cl',r.cl_id||'');oOp('fe-op',r.op_id||'',editIdx<0);['fe','fv','nro','concepto','notas'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||'';});if($('fe-ec'))$('fe-ec').value=r.ec||'PENDIENTE';if($('fe-tc2'))$('fe-tc2').value=r.tipo_comp||r.tc||'Factura A';['n21','n27','n105','n5','n0'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||0;});if($('fe-reint'))$('fe-reint').value=r.reint||0;if($('fe-mon'))$('fe-mon').value=r.mon||'USD';if($('fe-tc'))$('fe-tc').value=r.tc_v||r.tc||lTC();cIVA('fe');}
+function rstPg(r={}){oFP('pg-fac',r.fac_id||'',!r.id);oPv('pg-pv',r.pv_id||'');if($('pg-fp'))$('pg-fp').value=r.fp||'';if($('pg-forma')){$('pg-forma').value=r.forma||'Transferencia Bancaria';tgChq('pg');}['banco','ref','f_ac','obs'].forEach(f=>{const el=$('pg-'+f);if(el)el.value=r[f]||'';});if($('pg-mars'))$('pg-mars').value=r.mars||0;if($('pg-musd'))$('pg-musd').value=r.musd||0;if($('pg-mon'))$('pg-mon').value=r.mon||'ARS';['chqb','chqn','chqf'].forEach(f=>{const el=$('pg-'+f);if(el)el.value=r[f]||'';});}
+function rstCb(r={}){oFE('cb-fac',r.fac_id||'',!r.id);oCl('cb-cl',r.cl_id||'');if($('cb-fc'))$('cb-fc').value=r.fc||'';if($('cb-forma')){$('cb-forma').value=r.forma||'Transferencia Bancaria';tgChq('cb');}['banco','ref','f_ac','obs'].forEach(f=>{const el=$('cb-'+f);if(el)el.value=r[f]||'';});if($('cb-mars'))$('cb-mars').value=r.mars||0;if($('cb-musd'))$('cb-musd').value=r.musd||0;if($('cb-mon'))$('cb-mon').value=r.mon||'ARS';['chqb','chqn','chqf'].forEach(f=>{const el=$('cb-'+f);if(el)el.value=r[f]||'';});}
 
 // ═══ SAVE RECORDS ════════════════════════════
 async function gPv(){
