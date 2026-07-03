@@ -1220,11 +1220,14 @@ async function gFE(){
   const tars=mon==='USD'?total*tc:total,tusd=mon==='USD'?total:(tc>1?total/tc:0);
   const ec=v('fe-ec')||'PENDIENTE';
   const reint=parseFloat(v('fe-reint'))||0;
-  const datosE={id:editIdx>=0?D.facturas_emit[editIdx].id:nid(D.facturas_emit),fe:v('fe-fe'),fv:v('fe-fv'),cl_id:cliId,cliente:cli.razon||'',nro:v('fe-nro'),tipo_comp:v('fe-tc2')||'Factura A',op_id:opId,op:op.exp||'',concepto:v('fe-concepto')||'',n21,i21,n27,i27,n105,i105,n5,i5,n0,reint,tiva,neto,tars,mon,tusd,tc_v:tc,ec,notas:v('fe-notas')||''};
-  if(editIdx>=0)D.facturas_emit[editIdx]=datosE;else D.facturas_emit.push(datosE);
-  // save already handled above
+  const isEdit=editIdx>=0;
+  const datosE={id:isEdit?D.facturas_emit[editIdx].id:nid(D.facturas_emit),fe:v('fe-fe')||null,fv:v('fe-fv')||null,cl_id:cliId,cliente:cli.razon||'',nro:v('fe-nro'),tipo_comp:v('fe-tc2')||'Factura A',op_id:opId||null,op:op.exp||'',concepto:v('fe-concepto')||'',n21,i21,n27,i27,n105,i105,n5,i5,n0,reint,tiva,neto,tars,mon,tusd,tc_v:tc,ec,notas:v('fe-notas')||''};
+  const okFE=await save('facturas_emit',datosE,isEdit);if(!okFE)return;
+  editIdx=-1;cM('m-fe');
   if(ec==='COBRADA'&&confirm('Factura registrada como COBRADA.\n\n¿Registrás la cobranza ahora?')){
-    setTimeout(()=>{editIdx=-1;oM('m-cb');oFE('cb-fac',datosE.id,false);oCl('cb-cl',cliId);if($('cb-mars'))$('cb-mars').value=tars.toFixed(2);if($('cb-musd'))$('cb-musd').value=tusd.toFixed(2);if($('cb-mon'))$('cb-mon').value=mon;},300);
+    const facReal=D.facturas_emit.find(f=>f.nro===datosE.nro&&f.cl_id===cliId);
+    const facIdReal=facReal?facReal.id:datosE.id;
+    setTimeout(()=>{editIdx=-1;oM('m-cb');oFE('cb-fac',facIdReal,false);oCl('cb-cl',cliId);if($('cb-fc'))$('cb-fc').value=new Date().toISOString().slice(0,10);if($('cb-mars'))$('cb-mars').value=tars.toFixed(2);if($('cb-musd'))$('cb-musd').value=tusd.toFixed(2);if($('cb-mon'))$('cb-mon').value=mon;},300);
   }else{toast('Factura registrada ✓');}
   render('femit');
 }
@@ -1232,19 +1235,21 @@ async function gPg(){
   const fp=v('pg-fp');if(!fp){toast('La fecha es obligatoria','er');return;}
   const facId=parseInt(v('pg-fac'))||0;const pvId=parseInt(v('pg-pv'))||0;
   const fac=D.facturas_prov.find(f=>f.id===facId)||{};const pv=D.proveedores.find(p=>p.id===pvId)||{};
-  const rec={id:editIdx>=0?D.pagos[editIdx].id:nid(D.pagos),fp,fac_id:facId,nro_f:fac.nro||'',pv_id:pvId,prov:pv.razon||'',forma:v('pg-forma')||'',banco:v('pg-banco')||'',ref:v('pg-ref')||'',f_ac:v('pg-f_ac')||'',mars:parseFloat(v('pg-mars'))||0,musd:parseFloat(v('pg-musd'))||0,mon:v('pg-mon')||'ARS',chqb:v('pg-chqb')||'',chqn:v('pg-chqn')||'',chqf:v('pg-chqf')||'',obs:v('pg-obs')||''};
-  if(editIdx>=0)D.pagos[editIdx]=rec;else D.pagos.push(rec);
+  const isEdit=editIdx>=0;
+  const rec={id:isEdit?D.pagos[editIdx].id:nid(D.pagos),fp,fac_id:facId||null,nro_f:fac.nro||'',pv_id:pvId||null,prov:pv.razon||'',forma:v('pg-forma')||'',banco:v('pg-banco')||'',ref:v('pg-ref')||'',f_ac:v('pg-f_ac')||null,mars:parseFloat(v('pg-mars'))||0,musd:parseFloat(v('pg-musd'))||0,mon:v('pg-mon')||'ARS',chqb:v('pg-chqb')||'',chqn:v('pg-chqn')||'',chqf:v('pg-chqf')||'',obs:v('pg-obs')||''};
+  const okPg=await save('pagos',rec,isEdit);if(!okPg)return;
   if(facId){await sb.from('facturas_prov').update({ep:'PAGADA'}).eq('id',facId);await loadT('facturas_prov');}
-  toast('Pago registrado ✓');render('pagos');
+  editIdx=-1;cM('m-pg');toast('Pago registrado ✓');render('pagos');
 }
 async function gCb(){
   const fc=v('cb-fc');if(!fc){toast('La fecha es obligatoria','er');return;}
   const facId=parseInt(v('cb-fac'))||0;const cliId=parseInt(v('cb-cl'))||0;
   const fac=D.facturas_emit.find(f=>f.id===facId)||{};const cli=D.clientes.find(c=>c.id===cliId)||{};
-  const rec={id:editIdx>=0?D.cobranzas[editIdx].id:nid(D.cobranzas),fc,fac_id:facId,nro_a:fac.nro||'',cl_id:cliId,cliente:cli.razon||'',forma:v('cb-forma')||'',banco:v('cb-banco')||'',ref:v('cb-ref')||'',f_ac:v('cb-f_ac')||'',mars:parseFloat(v('cb-mars'))||0,musd:parseFloat(v('cb-musd'))||0,mon:v('cb-mon')||'ARS',chqb:v('cb-chqb')||'',chqn:v('cb-chqn')||'',chqf:v('cb-chqf')||'',obs:v('cb-obs')||''};
-  if(editIdx>=0)D.cobranzas[editIdx]=rec;else D.cobranzas.push(rec);
+  const isEdit=editIdx>=0;
+  const rec={id:isEdit?D.cobranzas[editIdx].id:nid(D.cobranzas),fc,fac_id:facId||null,nro_a:fac.nro||'',cl_id:cliId||null,cliente:cli.razon||'',forma:v('cb-forma')||'',banco:v('cb-banco')||'',ref:v('cb-ref')||'',f_ac:v('cb-f_ac')||null,mars:parseFloat(v('cb-mars'))||0,musd:parseFloat(v('cb-musd'))||0,mon:v('cb-mon')||'ARS',chqb:v('cb-chqb')||'',chqn:v('cb-chqn')||'',chqf:v('cb-chqf')||'',obs:v('cb-obs')||''};
+  const okCb=await save('cobranzas',rec,isEdit);if(!okCb)return;
   if(facId){await sb.from('facturas_emit').update({ec:'COBRADA'}).eq('id',facId);await loadT('facturas_emit');}
-  toast('Cobranza registrada ✓');render('cobs');
+  editIdx=-1;cM('m-cb');toast('Cobranza registrada ✓');render('cobs');
 }
 async function gTG(){
   const cat=v('tg-cat').trim().toUpperCase(),nom=v('tg-nom').trim();
