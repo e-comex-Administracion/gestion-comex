@@ -284,8 +284,17 @@ function honBaseOp(o){
   return 0;
 }
 function gastosOp(o){
-  // Suma de todas las facturas de proveedor cargadas a esta operación (sin importar si están pagadas)
-  return D.facturas_prov.filter(f=>f.op_id===o.id).reduce((a,f)=>a+(f.tars||0),0);
+  // Suma de gastos asignados a esta operación: soporta facturas divididas entre varios expedientes
+  let total=0;
+  D.facturas_prov.forEach(f=>{
+    if(f.asignaciones&&f.asignaciones.length){
+      f.asignaciones.forEach(a=>{ if(a.op_id===o.id) total+=(a.monto||0); });
+    } else if(f.op_id===o.id){
+      // Compatibilidad con facturas viejas sin desglose
+      total+=(f.tars||0);
+    }
+  });
+  return total;
 }
 function opIdDeCobranza(c){
   // Resuelve a qué expediente pertenece una cobranza: directo, o via la factura emitida vinculada
@@ -325,8 +334,17 @@ function oM(id,vals={}){
   if(id==='m-fp'){
     oPv('fp-pv',vals.pv_id||'');
     oTG('fp-tg',vals.tg_id||'');
-    oOp('fp-op',vals.op_id||'');
     if($('fp-tc')&&!vals.tc)$('fp-tc').value=lTC();
+    // Inicializar líneas de asignación de gasto
+    if(vals.asignaciones&&vals.asignaciones.length){
+      fpAsign=vals.asignaciones.map(a=>({op_id:a.op_id||'',monto:a.monto||0}));
+    }else if(vals.op_id){
+      fpAsign=[{op_id:vals.op_id,monto:vals.tars||0}];
+    }else{
+      fpAsign=[{op_id:'',monto:0}];
+    }
+    renderFpAsignRows();
+    setTimeout(()=>{if($('fp-asig'))onFpAsigChange();},0);
   }
   if(id==='m-fe'){
     oCl('fe-cl',vals.cl_id||'');
@@ -407,6 +425,66 @@ function cIVA(p){
   const tars=mon==='USD'?total*tc:total,tusd=mon==='USD'?total:(tc>1?total/tc:0);
   if($(p+'-tars'))$(p+'-tars').value=tars.toFixed(2);
   if($(p+'-tusd'))$(p+'-tusd').value=tusd.toFixed(2);
+  if(p==='fp')syncFpAsignSingle();
+}
+
+// ═══ ASIGNACIÓN DE GASTO A MÚLTIPLES EXPEDIENTES ═══════════
+let fpAsign=[{op_id:'',monto:0}];
+function renderFpAsignRows(){
+  const wrap=$('fp-asign-rows');
+  if(!wrap)return;
+  const opOpts=[...D.operaciones].sort((a,b)=>(b.f_ap||'').localeCompare(a.f_ap||'')).map(o=>`<option value="${o.id}">${o.exp} — ${clienteDeId(o.cli_id)||o.cliente}</option>`).join('');
+  wrap.innerHTML=fpAsign.map((row,i)=>`
+    <div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
+      <select class="fc" style="flex:2" onchange="fpAsign[${i}].op_id=parseInt(this.value)||'';updateFpAsignCheck()">
+        <option value="">-- Expediente --</option>${opOpts}
+      </select>
+      <input type="number" class="fc" style="flex:1" placeholder="Monto ARS" value="${row.monto||''}" oninput="fpAsign[${i}].monto=parseFloat(this.value)||0;updateFpAsignCheck()">
+      ${fpAsign.length>1?`<button type="button" class="btn bd bs" onclick="removeFpAsignRow(${i})">🗑</button>`:''}
+    </div>`).join('');
+  // Setear el valor seleccionado de cada select (innerHTML reset pierde selección, se hace después)
+  fpAsign.forEach((row,i)=>{
+    const sel=wrap.children[i]?.querySelector('select');
+    if(sel&&row.op_id)sel.value=row.op_id;
+  });
+  updateFpAsignCheck();
+}
+function addFpAsignRow(){
+  fpAsign.push({op_id:'',monto:0});
+  renderFpAsignRows();
+}
+function removeFpAsignRow(i){
+  fpAsign.splice(i,1);
+  renderFpAsignRows();
+}
+function syncFpAsignSingle(){
+  // Si hay una sola línea, la sincronizamos automáticamente con el total de la factura
+  if(fpAsign.length===1){
+    const total=parseFloat($('fp-tars')?.value)||0;
+    fpAsign[0].monto=total;
+    const wrap=$('fp-asign-rows');
+    const input=wrap?.querySelector('input[type=number]');
+    if(input)input.value=total?total.toFixed(2):'';
+    updateFpAsignCheck();
+  }
+}
+function onFpAsigChange(){
+  const asig=$('fp-asig')?.value;
+  const wrap=$('fp-asign-wrap');
+  if(wrap)wrap.style.display=asig==='ESTRUCTURA'?'none':'block';
+}
+function updateFpAsignCheck(){
+  const el=$('fp-asign-check');
+  if(!el)return;
+  const total=parseFloat($('fp-tars')?.value)||0;
+  const asignado=fpAsign.reduce((a,r)=>a+(r.monto||0),0);
+  const diff=total-asignado;
+  if(total<=0){el.innerHTML='';return;}
+  if(Math.abs(diff)<0.5){
+    el.innerHTML=`<span style="color:var(--gn)">✓ Asignado: $ ${fN(asignado)} / $ ${fN(total)}</span>`;
+  }else{
+    el.innerHTML=`<span style="color:var(--org)">⚠️ Asignado: $ ${fN(asignado)} / $ ${fN(total)} (diferencia: $ ${fN(Math.abs(diff))})</span>`;
+  }
 }
 function tgChq(p){const f=$(p+'-forma')?.value;const b=$(p+'-cbox');if(b)b.style.display=(f==='Cheque Propio'||f==='Cheque Terceros'||f==='Cheque')?'block':'none';}
 
@@ -583,7 +661,7 @@ function rExps(pg,ac){
 function vExp(idx){
   const o=D.operaciones[idx];
 
-  const fps=D.facturas_prov.filter(f=>f.op_id===o.id);
+  const fps=D.facturas_prov.filter(f=>(f.asignaciones&&f.asignaciones.some(a=>a.op_id===o.id))||f.op_id===o.id);
   const fes=D.facturas_emit.filter(f=>f.op_id===o.id); // informativas
   const cobs=D.cobranzas.filter(c=>opIdDeCobranza(c)===o.id); // reales, vinculadas al expediente (directo o vía factura)
 
@@ -631,10 +709,15 @@ function vExp(idx){
   h+=`<div style="font-weight:600;font-size:12px;margin-bottom:6px;color:var(--tx2)">FACTURAS DE PROVEEDORES (${fps.length})</div>`;
   if(!fps.length){h+=`<div class="es" style="padding:12px"><p>Sin facturas cargadas</p></div>`;}
   else{
-    h+=`<div class="tw" style="margin-bottom:12px"><table><thead><tr>${['Proveedor','Tipo Gasto','Fecha','Moneda','Importe','ARS','Estado'].map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>
-      ${fps.map(f=>`<tr><td class="tdm">${provDeId(f.pv_id)||f.prov}</td><td>${f.tg}</td><td class="tdc">${fF(f.fe)}</td><td>${f.mon}</td>
-        <td class="tdc">${f.mon==='USD'?fU(f.tusd):'$ '+fN(f.total)}</td><td class="tdc rn">$ ${fN(f.tars)}</td><td>${eB(f.ep)}</td></tr>`).join('')}
-      <tr style="background:var(--s2)"><td colspan="5" style="font-weight:600">TOTAL GASTOS</td><td class="tdc rn">$ ${fN(gastos)}</td><td></td></tr>
+    h+=`<div class="tw" style="margin-bottom:12px"><table><thead><tr>${['Proveedor','Tipo Gasto','Fecha','Moneda','Importe Factura','Asignado a este Exp.','Estado'].map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>
+      ${fps.map(f=>{
+        const esDividida=f.asignaciones&&f.asignaciones.length>1;
+        const montoAsig=esDividida?(f.asignaciones.find(a=>a.op_id===o.id)?.monto||0):(f.tars||0);
+        return `<tr><td class="tdm">${provDeId(f.pv_id)||f.prov}</td><td>${f.tg}</td><td class="tdc">${fF(f.fe)}</td><td>${f.mon}</td>
+        <td class="tdc">${f.mon==='USD'?fU(f.tusd):'$ '+fN(f.total)}${esDividida?` <small style="color:var(--org)">(dividida en ${f.asignaciones.length})</small>`:''}</td>
+        <td class="tdc rn">$ ${fN(montoAsig)}</td><td>${eB(f.ep)}</td></tr>`;
+      }).join('')}
+      <tr style="background:var(--s2)"><td colspan="5" style="font-weight:600">TOTAL GASTOS ASIGNADOS</td><td class="tdc rn">$ ${fN(gastos)}</td><td></td></tr>
       </tbody></table></div>`;
   }
 
@@ -668,7 +751,7 @@ function rFProv(pg,ac){
         `<span class="tdm">${provDeId(f.pv_id)||f.prov}</span>`,
         `<span class="tdc" style="font-size:10px">${f.nro}</span>`,f.tg,`<span class="tdc">$ ${fN(f.tars)}</span>`,f.mon,
         `<span class="bg ${f.asig==='OPERACION'?'bgb':'bgp'}">${f.asig}</span>`,
-        expDeId(f.op_id)||f.op||'-',eB(f.ep),ac2('facturas_prov',i)
+        (f.asignaciones&&f.asignaciones.length>1)?`<span style="color:var(--acc);font-size:11px" title="${f.asignaciones.map(a=>a.exp+': $'+fN(a.monto)).join(' · ')}">🔀 ${f.asignaciones.length} expedientes</span>`:(expDeId(f.op_id)||f.op||'-'),eB(f.ep),ac2('facturas_prov',i)
       ]))}</div></div>`;
 }
 
@@ -1207,7 +1290,7 @@ function edit(tabla,idx){
 function rstPv(r={}){editIdx=r.id?D.proveedores.findIndex(x=>x.id===r.id):-1;['razon','cuit','iva','tel','email','cpago','moneda','activo','notas'].forEach(f=>{const el=$('pv-'+f);if(el)el.value=r[f]||'';});oTG('pv-tg',r.tg_id||'');if(r.iva&&$('pv-iva'))$('pv-iva').value=r.iva;if(r.activo&&$('pv-activo'))$('pv-activo').value=r.activo;if(r.moneda&&$('pv-moneda'))$('pv-moneda').value=r.moneda;}
 function rstCl(r={}){editIdx=r.id?D.clientes.findIndex(x=>x.id===r.id):-1;['razon','cuit','iva','contacto','tel','email','rubro','cpago','moneda','activo','notas'].forEach(f=>{const el=$('cl-'+f);if(el)el.value=r[f]||'';});if(r.iva&&$('cl-iva'))$('cl-iva').value=r.iva;if(r.activo&&$('cl-activo'))$('cl-activo').value=r.activo;if(r.moneda&&$('cl-moneda'))$('cl-moneda').value=r.moneda;}
 function rstEx(r={}){['exp','pais','f_ap','f_cl','tc','hon_usd','hon_ars','importe_ref','f_cobro_est','notas'].forEach(f=>{const el=$('ex-'+f);if(el)el.value=r[f]||'';});if($('ex-tipo'))$('ex-tipo').value=r.tipo||'Importación Definitiva para Consumo';if($('ex-estado'))$('ex-estado').value=r.estado||'EN TRAMITE';if($('ex-moneda_ref'))$('ex-moneda_ref').value=r.moneda_ref||'USD';oCl('ex-cl',r.cli_id||'');}
-function rstFP(r={}){oPv('fp-pv',r.pv_id||'');oTG('fp-tg',r.tg_id||'');oOp('fp-op',r.op_id||'');['fe','fv','nro','notas'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||'';});if($('fp-asig'))$('fp-asig').value=r.asig||'ESTRUCTURA';if($('fp-ep'))$('fp-ep').value=r.ep||'PENDIENTE';if($('fp-tc2'))$('fp-tc2').value=r.tipo_comp||r.tc||'Factura A';['n21','n105','n27','n5','n0'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||0;});if($('fp-mon'))$('fp-mon').value=r.mon||'ARS';if($('fp-tc'))$('fp-tc').value=r.tc||lTC();cIVA('fp');}
+function rstFP(r={}){oPv('fp-pv',r.pv_id||'');oTG('fp-tg',r.tg_id||'');['fe','fv','nro','notas'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||'';});if($('fp-asig'))$('fp-asig').value=r.asig||'ESTRUCTURA';if($('fp-ep'))$('fp-ep').value=r.ep||'PENDIENTE';if($('fp-tc2'))$('fp-tc2').value=r.tipo_comp||r.tc||'Factura A';['n21','n105','n27','n5','n0'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||0;});if($('fp-mon'))$('fp-mon').value=r.mon||'ARS';if($('fp-tc'))$('fp-tc').value=r.tc||lTC();cIVA('fp');onFpAsigChange();}
 function rstFE(r={}){oCl('fe-cl',r.cl_id||'');oOp('fe-op',r.op_id||'',editIdx<0);['fe','fv','nro','concepto','notas'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||'';});if($('fe-ec'))$('fe-ec').value=r.ec||'PENDIENTE';if($('fe-tc2'))$('fe-tc2').value=r.tipo_comp||r.tc||'Factura A';['n21','n27','n105','n5','n0'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||0;});if($('fe-reint'))$('fe-reint').value=r.reint||0;if($('fe-mon'))$('fe-mon').value=r.mon||'USD';if($('fe-tc'))$('fe-tc').value=r.tc_v||r.tc||lTC();cIVA('fe');}
 function rstPg(r={}){oFP('pg-fac',r.fac_id||'',!r.id);oPv('pg-pv',r.pv_id||'');if($('pg-fp'))$('pg-fp').value=r.fp||'';if($('pg-forma')){$('pg-forma').value=r.forma||'Transferencia Bancaria';tgChq('pg');}['banco','ref','f_ac','obs'].forEach(f=>{const el=$('pg-'+f);if(el)el.value=r[f]||'';});if($('pg-mars'))$('pg-mars').value=r.mars||0;if($('pg-musd'))$('pg-musd').value=r.musd||0;if($('pg-mon'))$('pg-mon').value=r.mon||'ARS';['chqb','chqn','chqf'].forEach(f=>{const el=$('pg-'+f);if(el)el.value=r[f]||'';});}
 function rstCb(r={}){oOp('cb-op',r.op_id||'');oFE('cb-fac',r.fac_id||'',!r.id);oCl('cb-cl',r.cl_id||'');if($('cb-fc'))$('cb-fc').value=r.fc||'';if($('cb-forma')){$('cb-forma').value=r.forma||'Transferencia Bancaria';tgChq('cb');}['banco','ref','f_ac','obs'].forEach(f=>{const el=$('cb-'+f);if(el)el.value=r[f]||'';});if($('cb-mars'))$('cb-mars').value=r.mars||0;if($('cb-musd'))$('cb-musd').value=r.musd||0;if($('cb-mon'))$('cb-mon').value=r.mon||'ARS';['chqb','chqn','chqf'].forEach(f=>{const el=$('cb-'+f);if(el)el.value=r[f]||'';});}
@@ -1287,12 +1370,12 @@ async function gFP(){
   const pvId=parseInt(v('fp-pv'))||0;if(!pvId){toast('Seleccioná un proveedor','er');return;}
   const pv=D.proveedores.find(p=>p.id===pvId)||{};
   const tgId=parseInt(v('fp-tg'))||0;const tg=D.tipos_gasto.find(t=>t.id===tgId)||{};
-  const opId=parseInt(v('fp-op'))||0;const op=D.operaciones.find(o=>o.id===opId)||{};
   const mon=v('fp-mon')||'ARS',tc=parseFloat(v('fp-tc'))||lTC();
   const n21=parseFloat(v('fp-n21'))||0,n105=parseFloat(v('fp-n105'))||0,n27=parseFloat(v('fp-n27'))||0,n5=parseFloat(v('fp-n5'))||0,n0=parseFloat(v('fp-n0'))||0;
   const i21=n21*.21,i105=n105*.105,i27=n27*.27,i5=n5*.05,tiva=i21+i105+i27+i5,neto=n21+n105+n27+n5+n0,total=neto+tiva;
   const tars=mon==='USD'?total*tc:total,tusd=mon==='USD'?total:(tc>1?total/tc:0);
   const ep=v('fp-ep')||'PENDIENTE';
+  const asigTipo=v('fp-asig')||'ESTRUCTURA';
   const isEdit=editIdx>=0;
   // Chequeo duplicado nro factura
   const nroCheck=v('fp-nro').trim();
@@ -1300,7 +1383,26 @@ async function gFP(){
     const dup=D.facturas_prov.find(f=>f.nro===nroCheck);
     if(dup){if(!confirm('⚠️ Ya existe una factura de proveedor con el nro. '+nroCheck+' ('+dup.prov+').\n\n¿Guardás de todas formas?'))return;}
   }
-  const datos={id:isEdit?D.facturas_prov[editIdx].id:nid(D.facturas_prov),fe:v('fp-fe')||null,fv:v('fp-fv')||null,pv_id:pvId,prov:pv.razon||'',nro:v('fp-nro'),tipo_comp:v('fp-tc2')||'Factura A',tg_id:tgId||null,tg:tg.nom||'',n21,i21,n27,i27,n105,i105,n5,i5,n0,tiva,neto,total,mon,tars,tusd,tc:tc,asig:v('fp-asig')||'ESTRUCTURA',op_id:opId||null,op:op.exp||'',ep,notas:v('fp-notas')||''};
+
+  // Procesar asignaciones (solo si es tipo OPERACION)
+  let asignaciones=[],opIdPrincipal=null,opNombrePrincipal='';
+  if(asigTipo==='OPERACION'){
+    const validas=fpAsign.filter(r=>r.op_id&&r.monto>0);
+    if(!validas.length){toast('Asigná el gasto a al menos un expediente con su monto','er');return;}
+    const asignado=validas.reduce((a,r)=>a+r.monto,0);
+    if(Math.abs(asignado-tars)>1){
+      if(!confirm('El total asignado ($ '+fN(asignado)+') no coincide con el total de la factura ($ '+fN(tars)+').\n\n¿Guardás de todas formas?'))return;
+    }
+    asignaciones=validas.map(r=>({op_id:r.op_id,exp:expDeId(r.op_id),monto:r.monto}));
+    if(asignaciones.length===1){
+      opIdPrincipal=asignaciones[0].op_id;
+      opNombrePrincipal=asignaciones[0].exp;
+    }else{
+      opNombrePrincipal='Múltiple ('+asignaciones.length+' exp.)';
+    }
+  }
+
+  const datos={id:isEdit?D.facturas_prov[editIdx].id:nid(D.facturas_prov),fe:v('fp-fe')||null,fv:v('fp-fv')||null,pv_id:pvId,prov:pv.razon||'',nro:v('fp-nro'),tipo_comp:v('fp-tc2')||'Factura A',tg_id:tgId||null,tg:tg.nom||'',n21,i21,n27,i27,n105,i105,n5,i5,n0,tiva,neto,total,mon,tars,tusd,tc:tc,asig:asigTipo,op_id:opIdPrincipal,op:opNombrePrincipal,asignaciones,ep,notas:v('fp-notas')||''};
   const ok=await save('facturas_prov',datos,isEdit);if(!ok)return;
   editIdx=-1;cM('m-fp');
   if(ep==='PAGADA'&&confirm('Factura guardada como PAGADA.\n\n¿Registrás el pago ahora?')){
@@ -2345,9 +2447,16 @@ function clearPdf(){
         <div class="fgrp"><label class="flbl">Total USD</label><input type="number" class="fc" id="fp-tusd" readonly></div>
       </div>
     </div>
-    <div class="fgrp"><label class="flbl">Asignación</label><select class="fc" id="fp-asig"><option>OPERACION</option><option>ESTRUCTURA</option></select></div>
-    <div class="fgrp"><label class="flbl">Operación</label><select class="fc" id="fp-op"></select></div>
+    <div class="fgrp"><label class="flbl">Asignación</label><select class="fc" id="fp-asig" onchange="onFpAsigChange()"><option>OPERACION</option><option>ESTRUCTURA</option></select></div>
     <div class="fgrp"><label class="flbl">Estado Pago</label><select class="fc" id="fp-ep"><option>PENDIENTE</option><option>PAGADA</option></select></div>
+    <div class="fgrp fsp" id="fp-asign-wrap">
+      <label class="flbl">Distribución del gasto por Expediente</label>
+      <div id="fp-asign-rows"></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+        <button type="button" class="btn bg2 bs" onclick="addFpAsignRow()">＋ Agregar línea</button>
+        <span id="fp-asign-check" style="font-size:11px"></span>
+      </div>
+    </div>
     <div class="fgrp fsp"><label class="flbl">Notas</label><textarea class="fc" id="fp-notas" rows="2"></textarea></div>
   </div></div>
   <div class="mf"><button class="btn bg2" onclick="cM('m-fp')">Cancelar</button><button class="btn bp" onclick="gFP()">💾 Guardar</button></div>
