@@ -469,23 +469,17 @@ function rDash(pg){
 
   // Tabla por expediente
   const semRows=oa.map(o=>{
-    const honBase=honBaseOp(o);
     const cobrado=cobradoOp(o);
     const esperada=rentExpEsperada(o);
     const real=rentExpReal(o);
-
-    let estadoFin,color;
-    if(cobrado<=0){estadoFin='🔴 Sin cobrar';color='var(--rd)';}
-    else if(cobrado>=honBase*0.99&&honBase>0){estadoFin='🟢 Cobrado';color='var(--gn)';}
-    else{estadoFin='🟡 Cobro parcial';color='var(--org)';}
 
     return[
       `<span style="color:var(--acc);font-weight:600">${o.exp}</span>`,
       `<span style="font-size:12px">${clienteDeId(o.cli_id)||o.cliente}</span>`,
       eB(o.estado),
       `<span class="tdc" style="color:var(--tx2)">$ ${fN(esperada)}</span>`,
-      cobrado>0?`<span class="tdc" style="color:var(--gn);font-weight:700">$ ${fN(real)}</span>`:`<span style="color:var(--tx3);font-size:11px">Sin cobrar</span>`,
-      `<span style="color:${color};font-size:11px;font-weight:600">${estadoFin}</span>`,
+      cobrado>0?`<span class="tdc" style="color:var(--gn);font-weight:700">$ ${fN(real)}</span>`:`<span style="color:var(--tx3);font-size:11px">—</span>`,
+      `<span class="tdc" style="color:${cobrado>0?'var(--gn)':'var(--tx3)'};font-weight:${cobrado>0?'700':'400'}">$ ${fN(cobrado)}</span>`,
     ];
   });
 
@@ -522,7 +516,7 @@ function rDash(pg){
     <div class="ch"><span class="cn">📊 Estado Financiero por Expediente</span>
       <span style="font-size:11px;color:var(--tx3)">Base = Honorario del presupuesto (fijo) · Real = Cobrado − Gastos</span>
     </div>
-    <div class="cb">${tbl(['Expediente','Cliente','Estado','Rent. Base','Rent. Real','Estado Cobro'],semRows,'Sin operaciones activas')}</div>
+    <div class="cb">${tbl(['Expediente','Cliente','Estado','Rent. Base','Rent. Real','Cobrado'],semRows,'Sin operaciones activas')}</div>
   </div>
   <div class="gr2">
     <div class="card"><div class="ch"><span class="cn">⚠️ Vencimientos Próximos (7 días)</span></div>
@@ -552,20 +546,13 @@ function rExps(pg,ac){
     const cobrado=cobradoOp(o);
     const esperada=rentExpEsperada(o);
     const real=rentExpReal(o);
-    const pendiente=rentExpPendiente(o);
 
-    let sem;
-    if(cobrado<=0){sem=`<span style="color:var(--rd);font-weight:600;font-size:11px">🔴 Sin cobrar</span>`;}
-    else if(cobrado>=honBase*0.99&&honBase>0){sem=`<span style="color:var(--gn);font-weight:600;font-size:11px">🟢 Cobrado</span>`;}
-    else{sem=`<span style="color:var(--org);font-weight:600;font-size:11px">🟡 Cobro parcial</span>`;}
+    const cobCell=`<span class="tdc" style="color:${cobrado>0?'var(--gn)':'var(--tx3)'};font-weight:${cobrado>0?'700':'400'}">$ ${fN(cobrado)}</span>`;
 
     const esperadaCell=`<span class="tdc" style="color:var(--tx2)">$ ${fN(esperada)}</span>`;
     const realCell=cobrado>0
       ?`<span class="tdc" style="color:var(--gn);font-weight:700">$ ${fN(real)}</span>`
       :`<span style="color:var(--tx3);font-size:11px">—</span>`;
-    const pendCell=pendiente>0
-      ?`<span class="tdc" style="color:var(--org)">$ ${fN(pendiente)}</span>`
-      :pendiente<0?`<span class="tdc" style="color:var(--gn)">+$ ${fN(Math.abs(pendiente))}</span>`:'—';
 
     return[
       `<span style="color:var(--acc);cursor:pointer;font-weight:600" onclick="vExp(${i})" title="Ver detalle">${o.exp} 🔍</span>`,
@@ -575,8 +562,7 @@ function rExps(pg,ac){
       eB(o.estado),
       esperadaCell,
       realCell,
-      pendCell,
-      sem,
+      cobCell,
       ac2('operaciones',i)
     ];
   });
@@ -586,7 +572,7 @@ function rExps(pg,ac){
       <span style="font-size:11px;color:var(--tx3)">Base = Honorario del presupuesto (fijo) · Real = Cobrado − Gastos</span>
     </div><div class="cb">
       ${fbar('exps',[{k:'fecha',l:'Fecha apertura'},{k:'exp',l:'Expediente'},{k:'cliente',l:'Cliente'},{k:'estado',l:'Estado'}],'Buscar expediente, cliente, mercadería...')}
-      ${tbl(['Expediente','Cliente','Mercadería','Apertura','Estado','Rent. Base','Rent. Real','Pendiente Cobro','Estado Cobro','Acciones'],rows)}
+      ${tbl(['Expediente','Cliente','Mercadería','Apertura','Estado','Rent. Base','Rent. Real','Cobrado','Acciones'],rows)}
     </div></div>`;
   } catch(e) {
     pg.innerHTML=`<div class="card"><div class="cb"><div class="al alw">Error al cargar expedientes: ${e.message}</div></div></div>`;
@@ -970,12 +956,9 @@ function rRent(pg){
     const gastosCell=gastos>0?`<span class="tdc rn">$ ${fN(gastos)}</span>`:`<span style="color:var(--tx3);font-size:11px">—</span>`;
     const realCell=cobrado>0
       ?`<span class="tdc rp" style="font-weight:700">$ ${fN(real)}</span>`
-      :`<span style="color:var(--tx3);font-size:11px">Sin cobrar</span>`;
+      :`<span style="color:var(--tx3);font-size:11px">—</span>`;
 
-    const cobPct=honBase>0?Math.round(cobrado/honBase*100):0;
-    const cobCell=cobrado>0
-      ?`<span style="color:${cobPct>=100?'var(--gn)':'var(--org)'};font-size:11px;font-weight:600">${cobPct>=100?'✅ Cobrado':cobPct+'% cobrado'}</span>`
-      :`<span style="color:var(--rd);font-size:11px">⏳ Sin cobrar</span>`;
+    const cobCell=`<span class="tdc" style="color:${cobrado>0?'var(--gn)':'var(--tx3)'};font-weight:${cobrado>0?'700':'400'}">$ ${fN(cobrado)}</span>`;
 
     return[
       `<span class="tdc">${o.exp}</span>`,
@@ -1005,7 +988,7 @@ function rRent(pg){
     <span class="cn">Rentabilidad por Operación</span>
     <span style="font-size:11px;color:var(--tx3)">Base = Honorario del presupuesto (fijo, no cambia) · Real = Cobrado − Gastos (dinámico)</span>
   </div><div class="cb">
-    ${tbl(['Expediente','Cliente','Estado','Rent. Base','Gastos Op.','Estado Cobro','Rent. Real'],opRows)}
+    ${tbl(['Expediente','Cliente','Estado','Rent. Base','Gastos Op.','Cobrado','Rent. Real'],opRows)}
   </div></div>
   <div class="card"><div class="ch"><span class="cn">Gastos de Estructura</span></div><div class="cb">
     ${tbl(['Proveedor','Tipo de Gasto','Fecha','Total','Estado'],esRows)}
