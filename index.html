@@ -88,6 +88,10 @@ textarea.fc{resize:vertical;min-height:52px}
 .cbox{grid-column:1/-1;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:7px;padding:10px;display:none}
 .cboxt{font-size:10px;color:var(--org);font-weight:600;margin-bottom:7px;text-transform:uppercase}
 .fsp{grid-column:1/-1}
+.tabs{display:flex;gap:4px;background:var(--s2);border-radius:8px;padding:4px;width:fit-content}
+.tab{padding:7px 16px;border-radius:6px;cursor:pointer;font-size:12px;color:var(--tx3);font-weight:600;transition:all .15s}
+.tab:hover{color:var(--tx2)}
+.tab.active{background:var(--acc);color:#fff}
 </style>
 </head>
 <body>
@@ -271,17 +275,38 @@ function mesDe(fecha){return fecha?String(fecha).slice(0,7):'';}
 function mesLabel(key){if(!key||key==='sin')return'SIN FECHA';const[y,m]=key.split('-').map(Number);const n=['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];return(n[m-1]||'?')+' '+y;}
 function fU(n){const x=parseFloat(n)||0;return x?'USD '+fN(x):'-';}
 function lTC(){if(!D.tipo_cambio.length)return 1;return parseFloat(D.tipo_cambio[D.tipo_cambio.length-1].ref)||1;}
-function rentExp(o){
-  // Rentabilidad = Honorarios E-COMEX (lo que E-COMEX gana, no lo que factura al cliente)
+// ═══ RENTABILIDAD POR EXPEDIENTE — Modelo Honorario/Gastos/Cobranzas ═══
+function honBaseOp(o){
+  // Honorario base = rentabilidad esperada de origen (definida en el presupuesto/expediente)
   const tcOp=o.tc||lTC()||1;
   if((o.hon_ars||0)>0) return o.hon_ars;
   if((o.hon_usd||0)>0) return o.hon_usd*tcOp;
   return 0;
 }
-function rentExpEst(o){
-  // Indica si la rentabilidad es estimada (no hay honorarios cargados)
-  return !((o.hon_ars||0)>0||(o.hon_usd||0)>0);
+function gastosOp(o){
+  // Suma de todas las facturas de proveedor cargadas a esta operación (sin importar si están pagadas)
+  return D.facturas_prov.filter(f=>f.op_id===o.id).reduce((a,f)=>a+(f.tars||0),0);
 }
+function cobradoOp(o){
+  // Suma de todas las cobranzas vinculadas DIRECTAMENTE a esta operación
+  return D.cobranzas.filter(c=>c.op_id===o.id).reduce((a,c)=>a+(c.mars||0),0);
+}
+function rentExpEsperada(o){
+  // Rentabilidad BASE = Honorario del presupuesto, FIJO. No se resta nada acá.
+  // Es la referencia desde el día uno, independiente de gastos o cobros.
+  return honBaseOp(o);
+}
+function rentExpReal(o){
+  // Rentabilidad real = Cobrado − Gastos (esto sí varía con el tiempo)
+  return cobradoOp(o)-gastosOp(o);
+}
+function rentExpPendiente(o){
+  // Cuánto falta cobrar para llegar al honorario base
+  return honBaseOp(o)-cobradoOp(o);
+}
+// Compatibilidad con nombres usados en otros módulos
+function rentExp(o){ return cobradoOp(o)>0 ? rentExpReal(o) : rentExpEsperada(o); }
+function rentExpEst(o){ return cobradoOp(o)<=0; }
 function eB(e){const m={PAGADA:'bgg',COBRADA:'bgg',CERRADA:'bgg',SI:'bgg',PENDIENTE:'bgo','EN CURSO':'bgb','EN TRAMITE':'bgb',NO:'bgr',CANCELADA:'bgr',VENCIDA:'bgr'};return`<span class="bg ${m[e]||'bgp'}">${e||'-'}</span>`;}
 function toast(msg,t='ok'){const el=$('toast');el.textContent=msg;el.className='show '+t;setTimeout(()=>el.className='',3000);}
 function cM(id){$(id).classList.remove('show');}
@@ -303,6 +328,7 @@ function oM(id,vals={}){
     oPv('pg-pv',vals.pv_id||'');
   }
   if(id==='m-cb'){
+    oOp('cb-op',vals.op_id||'');
     oFE('cb-fac',vals.fac_id||'',!vals.fac_id);
     oCl('cb-cl',vals.cl_id||'');
   }
@@ -339,6 +365,18 @@ function oFE(id,val='',onlyPend=true){const el=$(id);if(!el)return;let fes=onlyP
 function afPvTG(pvSelId,tgSelId){const pvId=parseInt($(pvSelId)?.value)||0;const pv=D.proveedores.find(p=>p.id===pvId);if(pv&&pv.tg_id&&$(tgSelId))$(tgSelId).value=pv.tg_id;}
 function afFacPg(facId){const f=D.facturas_prov.find(x=>x.id==facId);if(!f)return;if($('pg-pv'))$('pg-pv').value=f.pv_id||'';if($('pg-mars'))$('pg-mars').value=f.tars||0;if($('pg-musd'))$('pg-musd').value=f.tusd||0;if($('pg-mon'))$('pg-mon').value=f.mon||'ARS';}
 function afFacCb(facId){const f=D.facturas_emit.find(x=>x.id==facId);if(!f)return;if($('cb-cl'))$('cb-cl').value=f.cl_id||'';if($('cb-mars'))$('cb-mars').value=f.tars||0;if($('cb-musd'))$('cb-musd').value=f.tusd||0;if($('cb-mon'))$('cb-mon').value=f.mon||'ARS';}
+function afOpCb(){
+  const opId=parseInt($('cb-op')?.value)||0;
+  const o=D.operaciones.find(x=>x.id===opId);
+  if(!o)return;
+  if($('cb-cl'))$('cb-cl').value=o.cli_id||'';
+  // Filtrar facturas emitidas: solo mostrar las de este expediente (opcional)
+  const facSel=$('cb-fac');
+  if(facSel){
+    const facsDelOp=D.facturas_emit.filter(f=>f.op_id===opId&&f.ec!=='COBRADA');
+    facSel.innerHTML='<option value="">-- Sin factura (cobro directo) --</option>'+facsDelOp.map(f=>`<option value="${f.id}">${f.nro||'S/N'} — $ ${fN(f.tars)}</option>`).join('');
+  }
+}
 
 // ═══ IVA CALCULATOR ═══════════════════════════
 function cIVA(p){
@@ -407,54 +445,36 @@ function rDash(pg){
   // Operaciones activas
   const oa=op.filter(o=>o.estado!=='CERRADA'&&o.estado!=='CANCELADA');
 
-  // Facturado y cobro
-  const facturadas=new Set(fe.map(f=>f.op_id));
-  const opsConFac=oa.filter(o=>facturadas.has(o.id));
-  const opsSinFac=oa.filter(o=>!facturadas.has(o.id));
-  const pendCobro=fe.filter(f=>f.ec==='PENDIENTE');
-  const tPendCobro=pendCobro.reduce((a,f)=>a+(f.tars||0),0);
+  // Rentabilidad: Esperada / Real / Pendiente por operación activa
   const tCobrado=co.reduce((a,c)=>a+(c.mars||0),0);
-
-  // Rentabilidad esperada (honorarios de ops activas)
-  const rentEsperada=oa.reduce((a,o)=>{
-    if((o.hon_ars||0)>0) return a+o.hon_ars;
-    if((o.hon_usd||0)>0) return a+(o.hon_usd*(o.tc||tcRef||1));
-    return a;
-  },0);
-
-  // Rentabilidad cobrada (de ops cerradas o facturadas y cobradas)
-  const rentCobrada=op.filter(o=>o.estado==='CERRADA').reduce((a,o)=>{
-    if((o.hon_ars||0)>0) return a+o.hon_ars;
-    if((o.hon_usd||0)>0) return a+(o.hon_usd*(o.tc||tcRef||1));
-    return a;
-  },0);
+  const rentEsperada=oa.reduce((a,o)=>a+rentExpEsperada(o),0);
+  const rentRealActivas=oa.reduce((a,o)=>a+(cobradoOp(o)>0?rentExpReal(o):0),0);
+  const rentRealCerradas=op.filter(o=>o.estado==='CERRADA').reduce((a,o)=>a+(cobradoOp(o)>0?rentExpReal(o):0),0);
+  const opsSinCobrar=oa.filter(o=>cobradoOp(o)<=0);
+  const opsConCobro=oa.filter(o=>cobradoOp(o)>0);
 
   // Gastos pend pago
   const pp=fp.filter(f=>f.ep==='PENDIENTE');
   const tpp=pp.reduce((a,f)=>a+(f.tars||0),0);
 
-  // Semáforo por expediente
+  // Tabla por expediente
   const semRows=oa.map(o=>{
-    const hasFac=facturadas.has(o.id);
-    const facs=fe.filter(f=>f.op_id===o.id);
-    const cobros=co.filter(c=>facs.some(f=>f.id===c.fac_id));
-    const totalFac=facs.reduce((a,f)=>a+(f.tars||0),0);
-    const totalCob=cobros.reduce((a,c)=>a+(c.mars||0),0);
-    const honARS=(o.hon_ars||0)>0?o.hon_ars:(o.hon_usd||0)>0?(o.hon_usd*(o.tc||tcRef)):0;
+    const honBase=honBaseOp(o);
+    const cobrado=cobradoOp(o);
+    const esperada=rentExpEsperada(o);
+    const real=rentExpReal(o);
 
     let estadoFin,color;
-    if(!hasFac){estadoFin='🔴 Sin facturar';color='var(--rd)';}
-    else if(totalCob>=totalFac*0.99){estadoFin='🟢 Cobrado';color='var(--gn)';}
-    else if(totalCob>0){estadoFin='🟡 Cobro parcial';color='var(--org)';}
-    else{estadoFin='🟡 Facturado, pend.cobro';color='var(--org)';}
+    if(cobrado<=0){estadoFin='🔴 Sin cobrar';color='var(--rd)';}
+    else if(cobrado>=honBase*0.99&&honBase>0){estadoFin='🟢 Cobrado';color='var(--gn)';}
+    else{estadoFin='🟡 Cobro parcial';color='var(--org)';}
 
     return[
       `<span style="color:var(--acc);font-weight:600">${o.exp}</span>`,
-      `<span style="font-size:12px">${o.cliente}</span>`,
+      `<span style="font-size:12px">${clienteDeId(o.cli_id)||o.cliente}</span>`,
       eB(o.estado),
-      hasFac?`<span class="tdc rp">$ ${fN(totalFac)}</span>`:`<span style="color:var(--tx3);font-size:11px">Pendiente</span>`,
-      hasFac?(totalCob>0?`<span class="tdc" style="color:var(--gn)">$ ${fN(totalCob)}</span>`:`<span style="color:var(--tx3);font-size:11px">Sin cobrar</span>`):`<span style="color:var(--tx3);font-size:11px">-</span>`,
-      honARS>0?`<span class="tdc" style="color:var(--gn);font-weight:700">$ ${fN(honARS)}</span>`:`<span style="color:var(--tx3);font-size:11px">-</span>`,
+      `<span class="tdc" style="color:var(--tx2)">$ ${fN(esperada)}</span>`,
+      cobrado>0?`<span class="tdc" style="color:var(--gn);font-weight:700">$ ${fN(real)}</span>`:`<span style="color:var(--tx3);font-size:11px">Sin cobrar</span>`,
       `<span style="color:${color};font-size:11px;font-weight:600">${estadoFin}</span>`,
     ];
   });
@@ -481,18 +501,18 @@ function rDash(pg){
     :`<div style="text-align:center;color:var(--tx3);padding:16px;font-size:12px">✅ Sin vencimientos próximos</div>`;
 
   pg.innerHTML=sg([
-    {l:'Operaciones Activas',v:oa.length,s:opsSinFac.length+' sin facturar · '+opsConFac.length+' facturadas',c:'bl'},
-    {l:'Pendiente de Cobro',v:'$ '+fN(tPendCobro),s:pendCobro.length+' fact. emitidas pendientes',c:'og'},
-    {l:'Rentabilidad Esperada',v:'$ '+fN(rentEsperada),s:'Honorarios ops. activas',c:'gn'},
-    {l:'Rentabilidad Realizada',v:'$ '+fN(rentCobrada),s:'Honorarios ops. cerradas',c:'pu'},
+    {l:'Operaciones Activas',v:oa.length,s:opsSinCobrar.length+' sin cobrar · '+opsConCobro.length+' con cobro',c:'bl'},
+    {l:'Rentabilidad Base',v:'$ '+fN(rentEsperada),s:'Honorarios fijos (ops. activas)',c:'gn'},
+    {l:'Rentabilidad Real (activas)',v:'$ '+fN(rentRealActivas),s:'Cobrado − gastos, solo con cobro',c:'pu'},
+    {l:'Rentabilidad Real (cerradas)',v:'$ '+fN(rentRealCerradas),s:'Operaciones ya cerradas',c:'bl'},
     {l:'Fact. Prov. Pend. Pago',v:'$ '+fN(tpp),s:pp.length+' facturas pendientes',c:'rd'},
     {l:'Total Cobrado Histórico',v:'$ '+fN(tCobrado),s:'Acumulado de cobranzas',c:'bl'},
   ])+`
   <div class="card" style="margin-bottom:14px">
     <div class="ch"><span class="cn">📊 Estado Financiero por Expediente</span>
-      <span style="font-size:11px;color:var(--tx3)">🔴 Sin facturar · 🟡 Facturado/Cobro parcial · 🟢 Cobrado</span>
+      <span style="font-size:11px;color:var(--tx3)">Base = Honorario del presupuesto (fijo) · Real = Cobrado − Gastos</span>
     </div>
-    <div class="cb">${tbl(['Expediente','Cliente','Estado','Facturado','Cobrado','Hon. E-COMEX','Estado Fin.'],semRows,'Sin operaciones activas')}</div>
+    <div class="cb">${tbl(['Expediente','Cliente','Estado','Rent. Base','Rent. Real','Estado Cobro'],semRows,'Sin operaciones activas')}</div>
   </div>
   <div class="gr2">
     <div class="card"><div class="ch"><span class="cn">⚠️ Vencimientos Próximos (7 días)</span></div>
@@ -517,27 +537,25 @@ function rExps(pg,ac){
     {fecha:x=>x.o.f_ap||'',exp:x=>x.o.exp||'',cliente:x=>x.o.cliente||'',estado:x=>x.o.estado||''}
   );
   const rows=itemsF.map(({o,i})=>{
-    const facs=D.facturas_emit.filter(f=>f.op_id===o.id);
-    const totalFac=facs.reduce((a,f)=>a+(f.tars||0),0);
-    const cobros=D.cobranzas.filter(c=>facs.some(f=>f.id===c.fac_id));
-    const totalCob=cobros.reduce((a,c)=>a+(c.mars||0),0);
-    const honARS=rentExp(o);
-    const esEst=rentExpEst(o);
-    // Resolver cliente en tiempo real
     const clienteDisplay=clienteDeId(o.cli_id)||o.cliente||'-';
+    const honBase=honBaseOp(o);
+    const cobrado=cobradoOp(o);
+    const esperada=rentExpEsperada(o);
+    const real=rentExpReal(o);
+    const pendiente=rentExpPendiente(o);
 
-    // Semáforo
     let sem;
-    if(!facs.length){sem=`<span style="color:var(--rd);font-weight:600;font-size:11px">🔴 Sin facturar</span>`;}
-    else if(totalCob>=totalFac*0.99){sem=`<span style="color:var(--gn);font-weight:600;font-size:11px">🟢 Cobrado</span>`;}
-    else if(totalCob>0){sem=`<span style="color:var(--org);font-weight:600;font-size:11px">🟡 Cobro parcial</span>`;}
-    else{sem=`<span style="color:var(--org);font-weight:600;font-size:11px">🟡 Pend. cobro</span>`;}
+    if(cobrado<=0){sem=`<span style="color:var(--rd);font-weight:600;font-size:11px">🔴 Sin cobrar</span>`;}
+    else if(cobrado>=honBase*0.99&&honBase>0){sem=`<span style="color:var(--gn);font-weight:600;font-size:11px">🟢 Cobrado</span>`;}
+    else{sem=`<span style="color:var(--org);font-weight:600;font-size:11px">🟡 Cobro parcial</span>`;}
 
-    const facCell=totalFac>0?`<span class="tdc rp">$ ${fN(totalFac)}</span>`:`<span style="color:var(--tx3);font-size:11px">—</span>`;
-    const cobCell=totalCob>0?`<span class="tdc" style="color:var(--gn)">$ ${fN(totalCob)}</span>`:`<span style="color:var(--tx3);font-size:11px">—</span>`;
-    const honCell=honARS>0
-      ?`<span class="tdc" style="color:var(--gn);font-weight:700">$ ${fN(honARS)}${esEst?' <small style=color:var(--org)>(est.)</small>':''}</span>`
+    const esperadaCell=`<span class="tdc" style="color:var(--tx2)">$ ${fN(esperada)}</span>`;
+    const realCell=cobrado>0
+      ?`<span class="tdc" style="color:var(--gn);font-weight:700">$ ${fN(real)}</span>`
       :`<span style="color:var(--tx3);font-size:11px">—</span>`;
+    const pendCell=pendiente>0
+      ?`<span class="tdc" style="color:var(--org)">$ ${fN(pendiente)}</span>`
+      :pendiente<0?`<span class="tdc" style="color:var(--gn)">+$ ${fN(Math.abs(pendiente))}</span>`:'—';
 
     return[
       `<span style="color:var(--acc);cursor:pointer;font-weight:600" onclick="vExp(${i})" title="Ver detalle">${o.exp} 🔍</span>`,
@@ -545,21 +563,20 @@ function rExps(pg,ac){
       `<span style="font-size:11px">${(o.merc||'').substring(0,25)}${(o.merc||'').length>25?'...':''}</span>`,
       fF(o.f_ap),
       eB(o.estado),
-      facCell,
-      cobCell,
-      honCell,
+      esperadaCell,
+      realCell,
+      pendCell,
       sem,
-      o.f_cobro_est?`<span class="tdc">${fF(o.f_cobro_est)}</span>`:'—',
       ac2('operaciones',i)
     ];
   });
   try {
     pg.innerHTML=`<div class="card"><div class="ch">
       <span class="cn">Expedientes de Importación</span>
-      <span style="font-size:11px;color:var(--tx3)">Hon. E-COMEX = rentabilidad real de la operación</span>
+      <span style="font-size:11px;color:var(--tx3)">Base = Honorario del presupuesto (fijo) · Real = Cobrado − Gastos</span>
     </div><div class="cb">
       ${fbar('exps',[{k:'fecha',l:'Fecha apertura'},{k:'exp',l:'Expediente'},{k:'cliente',l:'Cliente'},{k:'estado',l:'Estado'}],'Buscar expediente, cliente, mercadería...')}
-      ${tbl(['Expediente','Cliente','Mercadería','Apertura','Estado','Facturado','Cobrado','Hon. E-COMEX ✦','Est. Fin.','F.Cobro Est.','Acciones'],rows)}
+      ${tbl(['Expediente','Cliente','Mercadería','Apertura','Estado','Rent. Base','Rent. Real','Pendiente Cobro','Estado Cobro','Acciones'],rows)}
     </div></div>`;
   } catch(e) {
     pg.innerHTML=`<div class="card"><div class="cb"><div class="al alw">Error al cargar expedientes: ${e.message}</div></div></div>`;
@@ -569,44 +586,76 @@ function rExps(pg,ac){
 
 function vExp(idx){
   const o=D.operaciones[idx];
+
   const fps=D.facturas_prov.filter(f=>f.op_id===o.id);
-  const fes=D.facturas_emit.filter(f=>f.op_id===o.id);
-  const tgA=fps.reduce((a,f)=>a+(f.tars||0),0),tgU=fps.reduce((a,f)=>a+(f.tusd||0),0);
-  const tfA=fes.reduce((a,f)=>a+(f.tars||0),0),tfU=fes.reduce((a,f)=>a+(f.tusd||0),0);
-  const tReint=fes.reduce((a,f)=>a+((f.reint||0)*(f.mon==='USD'?(f.tc_v||lTC()):1)),0);
-  const tfaNeto=tfA-tReint;
-  const res=tfaNeto-tgA,marg=tfaNeto>0?(res/tfaNeto*100).toFixed(1):0;
-  const rc=res>=0?'var(--grn)':'var(--red)',rbg=res>=0?'rgba(34,197,94,.08)':'rgba(239,68,68,.08)',rbr=res>=0?'rgba(34,197,94,.2)':'rgba(239,68,68,.2)';
+  const fes=D.facturas_emit.filter(f=>f.op_id===o.id); // informativas
+  const cobs=D.cobranzas.filter(c=>c.op_id===o.id); // reales, vinculadas al expediente
+
+  const honBase=honBaseOp(o);
+  const gastos=gastosOp(o);
+  const cobrado=cobradoOp(o);
+  const esperada=rentExpEsperada(o);
+  const real=rentExpReal(o);
+  const pendiente=rentExpPendiente(o);
+
+  const rc=cobrado>0?(real>=0?'var(--grn)':'var(--red)'):'var(--org)';
+  const rbg=cobrado>0?(real>=0?'rgba(34,197,94,.08)':'rgba(239,68,68,.08)'):'rgba(245,158,11,.06)';
+  const rbr=cobrado>0?(real>=0?'rgba(34,197,94,.2)':'rgba(239,68,68,.2)'):'rgba(245,158,11,.25)';
+
   let h=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px">`;
-  const refStr=o.importe_ref?(o.moneda_ref==='USD'?fU(o.importe_ref):'$ '+fN(o.importe_ref)):'-';
-  [['Cliente',o.cliente],['Estado',eB(o.estado)],['País',o.pais],['TC','$ '+fN(o.tc)],['Apertura',fF(o.f_ap)],['Cierre',o.f_cl?fF(o.f_cl):'—'],['Imp. Referencia',`<span class="rp">${refStr}</span>`],['F. Est. Cobro',o.f_cobro_est?fF(o.f_cobro_est):'-']].forEach(([l,val])=>{
+  [['Cliente',clienteDeId(o.cli_id)||o.cliente],['Estado',eB(o.estado)],['País',o.pais],['TC','$ '+fN(o.tc)],['Apertura',fF(o.f_ap)],['Cierre',o.f_cl?fF(o.f_cl):'—'],['F. Est. Cobro',o.f_cobro_est?fF(o.f_cobro_est):'-']].forEach(([l,val])=>{
     h+=`<div style="background:var(--s2);border-radius:6px;padding:8px"><div style="font-size:9px;color:var(--tx3);text-transform:uppercase">${l}</div><div style="font-weight:600;margin-top:2px;font-size:12px">${val}</div></div>`;
   });
   h+=`</div><div style="background:var(--s2);border-radius:6px;padding:8px;margin-bottom:12px;font-size:11px"><b>Mercadería:</b> ${o.merc} | <b>Tipo:</b> ${o.tipo}</div>`;
+
   h+=`<div style="background:${rbg};border:1px solid ${rbr};border-radius:8px;padding:12px;margin-bottom:12px">
-    <div style="font-weight:700;font-size:12px;margin-bottom:8px;color:${rc}">RESUMEN DE RENTABILIDAD</div>
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">
-      ${[['Facturado','$ '+fN(tfA),'var(--grn)'],['Reintegros','$ '+fN(tReint),'var(--org)'],['Gastos','$ '+fN(tgA),'var(--red)'],['Resultado','$ '+fN(res),rc],['Margen',marg+'%',rc]].map(([l,val,c])=>
+    <div style="font-weight:700;font-size:12px;margin-bottom:8px;color:${rc}">RESUMEN DE RENTABILIDAD ${cobrado<=0?'(aún sin cobros — se muestra la base de referencia)':''}</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+      ${[['Rentabilidad Base','$ '+fN(honBase),'var(--tx2)'],['Gastos Cargados','$ '+fN(gastos),'var(--red)'],['Cobrado','$ '+fN(cobrado),cobrado>0?'var(--grn)':'var(--org)'],['Rentabilidad Real',cobrado>0?'$ '+fN(real):'—',rc]].map(([l,val,c])=>
         `<div><div style="font-size:9px;color:var(--tx3);text-transform:uppercase">${l}</div><div style="font-size:14px;font-weight:700;color:${c}">${val}</div></div>`).join('')}
-    </div></div>`;
+    </div>
+    <div style="margin-top:8px;font-size:10px;color:var(--tx3)">La Rentabilidad Base es fija (honorario del presupuesto) y no se modifica con gastos ni cobros. La Rentabilidad Real es Cobrado − Gastos, y se actualiza a medida que hay movimientos.</div>
+    ${pendiente!==0?`<div style="margin-top:6px;font-size:11px;color:var(--tx3)">${pendiente>0?'Pendiente de cobrar (respecto a la base): <b style="color:var(--org)">$ '+fN(pendiente)+'</b>':'Cobrado por encima de la base: <b style="color:var(--grn)">+$ '+fN(Math.abs(pendiente))+'</b>'}</div>`:''}
+  </div>`;
+
+  // ── COBRANZAS del expediente (lo que realmente define la rentabilidad real) ──
+  h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+    <div style="font-weight:600;font-size:12px;color:var(--tx2)">COBRANZAS DEL EXPEDIENTE (${cobs.length})</div>
+    <button class="btn bgrn bs" onclick="cM('m-exp-det');abrirCobParaOp(${o.id})">＋ Registrar Cobro</button>
+  </div>`;
+  if(!cobs.length){
+    h+=`<div style="padding:10px;text-align:center;color:var(--org);background:rgba(245,158,11,.06);border:1px dashed rgba(245,158,11,.3);border-radius:6px;margin-bottom:12px">Sin cobros registrados — la rentabilidad es aún estimada</div>`;
+  } else {
+    h+=`<div class="tw" style="margin-bottom:12px"><table><thead><tr>${['Fecha','Forma','Referencia','ARS','Factura vinc.'].map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>
+      ${cobs.map(c=>`<tr><td class="tdc">${fF(c.fc)}</td><td>${c.forma||'-'}</td><td>${c.ref||'-'}</td><td class="tdc rp">$ ${fN(c.mars)}</td><td>${c.nro_a?`<span style="color:var(--acc);font-size:11px">${c.nro_a}</span>`:`<span style="color:var(--tx3);font-size:11px">Sin factura</span>`}</td></tr>`).join('')}
+      <tr style="background:var(--s2)"><td colspan="3" style="font-weight:600">TOTAL COBRADO</td><td class="tdc rp">$ ${fN(cobrado)}</td><td></td></tr>
+      </tbody></table></div>`;
+  }
+
   h+=`<div style="font-weight:600;font-size:12px;margin-bottom:6px;color:var(--tx2)">FACTURAS DE PROVEEDORES (${fps.length})</div>`;
   if(!fps.length){h+=`<div class="es" style="padding:12px"><p>Sin facturas cargadas</p></div>`;}
   else{
     h+=`<div class="tw" style="margin-bottom:12px"><table><thead><tr>${['Proveedor','Tipo Gasto','Fecha','Moneda','Importe','ARS','Estado'].map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>
-      ${fps.map(f=>`<tr><td class="tdm">${f.prov}</td><td>${f.tg}</td><td class="tdc">${fF(f.fe)}</td><td>${f.mon}</td>
+      ${fps.map(f=>`<tr><td class="tdm">${provDeId(f.pv_id)||f.prov}</td><td>${f.tg}</td><td class="tdc">${fF(f.fe)}</td><td>${f.mon}</td>
         <td class="tdc">${f.mon==='USD'?fU(f.tusd):'$ '+fN(f.total)}</td><td class="tdc rn">$ ${fN(f.tars)}</td><td>${eB(f.ep)}</td></tr>`).join('')}
-      <tr style="background:var(--s2)"><td colspan="5" style="font-weight:600">TOTAL GASTOS</td><td class="tdc rn">$ ${fN(tgA)}</td><td></td></tr>
+      <tr style="background:var(--s2)"><td colspan="5" style="font-weight:600">TOTAL GASTOS</td><td class="tdc rn">$ ${fN(gastos)}</td><td></td></tr>
       </tbody></table></div>`;
   }
-  h+=`<div style="font-weight:600;font-size:12px;margin-bottom:6px;color:var(--tx2)">FACTURA EMITIDA (${fes.length})</div>`;
-  if(!fes.length){h+=`<div style="padding:10px;text-align:center;color:var(--org);background:rgba(245,158,11,.06);border:1px dashed rgba(245,158,11,.3);border-radius:6px">Operación sin facturar</div>`;}
+
+  h+=`<div style="font-weight:600;font-size:12px;margin-bottom:6px;color:var(--tx2)">FACTURAS EMITIDAS — informativo (${fes.length})</div>
+  <div style="font-size:10px;color:var(--tx3);margin-bottom:6px">Estas facturas no afectan el cálculo de rentabilidad; solo sirven como registro fiscal/administrativo.</div>`;
+  if(!fes.length){h+=`<div style="padding:10px;text-align:center;color:var(--tx3);background:var(--s2);border-radius:6px">Sin facturas emitidas para esta operación</div>`;}
   else{h+=`<div class="tw"><table><thead><tr>${['Nro. ARCA','Fecha','Concepto','USD','ARS','Estado'].map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>
     ${fes.map(f=>`<tr><td class="tdc" style="color:var(--acc)">${f.nro}</td><td class="tdc">${fF(f.fe)}</td><td>${(f.concepto||"").substring(0,35)}...</td>
-      <td class="tdc rp">${fU(f.tusd)}</td><td class="tdc rp">$ ${fN(f.tars)}</td><td>${eB(f.ec)}</td></tr>`).join('')}
+      <td class="tdc">${fU(f.tusd)}</td><td class="tdc">$ ${fN(f.tars)}</td><td>${eB(f.ec)}</td></tr>`).join('')}
     </tbody></table></div>`;}
   $('m-exp-body').innerHTML=h;
-  $('m-exp-title').textContent=o.exp+' — '+o.cliente;
+  $('m-exp-title').textContent=o.exp+' — '+(clienteDeId(o.cli_id)||o.cliente);
   $('m-exp-det').classList.add('show');
+}
+function abrirCobParaOp(opId){
+  editIdx=-1;
+  oM('m-cb',{op_id:opId});
 }
 
 function rFProv(pg,ac){
@@ -808,89 +857,119 @@ function rTC(pg,ac){
 }
 async function tcR(){const of=prompt('TC Oficial BCRA hoy:','');if(!of||isNaN(parseFloat(of)))return;const mp=prompt('TC MEP (Enter = igual):',of)||of;const r={id:nid(D.tipo_cambio),fecha:new Date().toISOString().slice(0,10),of:parseFloat(of),mep:parseFloat(mp),ref:parseFloat(of),fuente:'BCRA',notas:'Carga rápida'};await save('tipo_cambio',r,false);toast('TC guardado: $ '+of+' ✓');render('tc');}
 
+let rentView='op'; // 'op' = por operación, 'mes' = por mes
 function rRent(pg){
-  const fe=D.facturas_emit,fp=D.facturas_prov;
-  const tcRef=lTC();
+  const fe=D.facturas_emit,fp=D.facturas_prov,co=D.cobranzas;
 
-  // Gastos de estructura
+  const tabsHTML=`<div class="tabs" style="margin-bottom:16px">
+    <div class="tab ${rentView==='op'?'active':''}" onclick="rentView='op';render('rent')">Por Operación</div>
+    <div class="tab ${rentView==='mes'?'active':''}" onclick="rentView='mes';render('rent')">Por Mes</div>
+  </div>`;
+
+  if(rentView==='mes'){
+    // ── RENTABILIDAD MENSUAL ──
+    // Σ Cobranzas del mes (todas las operaciones) − Σ Gastos de ESTRUCTURA del mes
+    // Los gastos de cada expediente NO participan acá (ya están descontados en la Rentabilidad Real por operación)
+    const meses={};
+    co.forEach(c=>{
+      if(!c.fc)return;
+      const m=c.fc.substring(0,7);
+      if(!meses[m])meses[m]={cobrado:0,estructura:0};
+      meses[m].cobrado+=(c.mars||0);
+    });
+    fp.filter(f=>f.asig==='ESTRUCTURA').forEach(f=>{
+      if(!f.fe)return;
+      const m=f.fe.substring(0,7);
+      if(!meses[m])meses[m]={cobrado:0,estructura:0};
+      meses[m].estructura+=(f.tars||0);
+    });
+    const mesesOrd=Object.keys(meses).sort().reverse();
+    const nombreMes=m=>{
+      const [y,mm]=m.split('-');
+      const nombres=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+      return nombres[parseInt(mm)-1]+' '+y;
+    };
+    const totCobrado=Object.values(meses).reduce((a,m)=>a+m.cobrado,0);
+    const totEstructura=Object.values(meses).reduce((a,m)=>a+m.estructura,0);
+
+    const rows=mesesOrd.map(m=>{
+      const d=meses[m];
+      const neto=d.cobrado-d.estructura;
+      return[
+        `<span class="tdm" style="font-weight:700">${nombreMes(m)}</span>`,
+        `<span class="tdc rp" style="font-weight:700">$ ${fN(d.cobrado)}</span>`,
+        `<span class="tdc rn">$ ${fN(d.estructura)}</span>`,
+        `<span class="tdc ${neto>=0?'rp':'rn'}" style="font-weight:700;font-size:14px">$ ${fN(neto)}</span>`,
+      ];
+    });
+
+    pg.innerHTML=tabsHTML+sg([
+      {l:'Total Cobrado (todos los meses)',v:'$ '+fN(totCobrado),c:'gn'},
+      {l:'Total Gastos de Estructura',v:'$ '+fN(totEstructura),c:'rd'},
+      {l:'Resultado Neto Histórico',v:'$ '+fN(totCobrado-totEstructura),c:(totCobrado-totEstructura)>=0?'gn':'rd'},
+    ])+`<div class="card"><div class="ch">
+      <span class="cn">📅 Rentabilidad General por Mes</span>
+      <span style="font-size:11px;color:var(--tx3)">Cobrado del mes (todas las operaciones) − Gastos de Estructura del mes. Los gastos de cada expediente ya están descontados en su Rentabilidad Real y no participan acá.</span>
+    </div><div class="cb">
+      ${tbl(['Mes','Cobrado','Gastos Estructura','Resultado Neto'],rows,'Sin cobranzas registradas aún')}
+    </div></div>`;
+    return;
+  }
+
+  // ── RENTABILIDAD POR OPERACIÓN ──
   const tES=fp.filter(f=>f.asig==='ESTRUCTURA').reduce((a,f)=>a+(f.tars||0),0);
-
-  let totHonARS=0,totFacBruto=0,totReint=0,totHonEst=0;
+  let totBase=0,totReal=0,totGastosOp=0;
 
   const opRows=D.operaciones.map(o=>{
-    const tcOp=o.tc||tcRef||1;
+    const honBase=honBaseOp(o);
+    const gastos=gastosOp(o);
+    const cobrado=cobradoOp(o);
+    const real=rentExpReal(o);
 
-    // Honorarios E-COMEX = RENTABILIDAD REAL
-    // Primero intentar desde facturas emitidas (neto sin reintegros = honorarios reales)
-    const facs=fe.filter(f=>f.op_id===o.id);
-    const facBruto=facs.reduce((a,f)=>a+(f.tars||0),0);
-    const reint=facs.reduce((a,f)=>a+((f.reint||0)*(f.mon==='USD'?(f.tc_v||tcRef):1)),0);
-    const facNeto=facBruto-reint; // lo que facturaste al cliente (para referencia)
+    totBase+=honBase;
+    totGastosOp+=gastos;
+    if(cobrado>0)totReal+=real;
 
-    // Honorarios reales: hon_ars si está cargado, sino hon_usd*tc, sino estimado
-    let honARS=0,esEst=false;
-    if((o.hon_ars||0)>0){
-      honARS=o.hon_ars;
-    } else if((o.hon_usd||0)>0){
-      honARS=o.hon_usd*tcOp;
-    } else if(facs.length&&facNeto>0){
-      // Si hay facturas pero no hay honorarios cargados: usar neto facturado como aprox
-      honARS=facNeto;
-    } else if((o.importe_ref||0)>0){
-      honARS=o.moneda_ref==='USD'?(o.importe_ref*tcOp):o.importe_ref;
-      esEst=true;
-    }
+    const baseCell=`<span class="tdc" style="color:var(--tx2)">$ ${fN(honBase)}</span>`;
+    const gastosCell=gastos>0?`<span class="tdc rn">$ ${fN(gastos)}</span>`:`<span style="color:var(--tx3);font-size:11px">—</span>`;
+    const realCell=cobrado>0
+      ?`<span class="tdc rp" style="font-weight:700">$ ${fN(real)}</span>`
+      :`<span style="color:var(--tx3);font-size:11px">Sin cobrar</span>`;
 
-    // Margen sobre honorarios
-    const m=honARS>0?'100.0':0; // honorarios = rentabilidad pura (sin gastos que son del cliente)
-
-    totHonARS+=honARS;
-    totFacBruto+=facBruto;
-    totReint+=reint;
-    if(esEst)totHonEst+=honARS;
-
-    const honCell=esEst
-      ?`<span class="tdc" style="color:var(--org)">$ ${fN(honARS)} <small>(est.)</small></span>`
-      :`<span class="tdc rp" style="font-weight:700">$ ${fN(honARS)}</span>`;
-
-    const facCell=facBruto>0
-      ?`<span class="tdc">$ ${fN(facBruto)}</span>${reint>0?` <small style="color:var(--tx3)">(-$ ${fN(reint)} reint.)</small>`:''}`
-      :`<span style="color:var(--tx3);font-size:11px">Sin factura</span>`;
-
-    // Estado cobro
-    const cobrado=D.cobranzas.filter(c=>facs.some(f=>f.id===c.fac_id)).reduce((a,c)=>a+(c.mars||0),0);
-    const cobPct=facBruto>0?Math.round(cobrado/facBruto*100):0;
-    const cobCell=facBruto>0
-      ?`<span style="color:${cobPct>=100?'var(--gn)':cobPct>0?'var(--org)':'var(--rd)'};font-size:11px;font-weight:600">${cobPct>=100?'✅ Cobrado':cobPct>0?cobPct+'% cobrado':'⏳ Pendiente'}</span>`
-      :`<span style="color:var(--tx3);font-size:11px">-</span>`;
+    const cobPct=honBase>0?Math.round(cobrado/honBase*100):0;
+    const cobCell=cobrado>0
+      ?`<span style="color:${cobPct>=100?'var(--gn)':'var(--org)'};font-size:11px;font-weight:600">${cobPct>=100?'✅ Cobrado':cobPct+'% cobrado'}</span>`
+      :`<span style="color:var(--rd);font-size:11px">⏳ Sin cobrar</span>`;
 
     return[
       `<span class="tdc">${o.exp}</span>`,
-      o.cliente,
+      clienteDeId(o.cli_id)||o.cliente,
       eB(o.estado),
-      facCell,
+      baseCell,
+      gastosCell,
       cobCell,
-      honCell,
+      realCell,
     ];
   });
 
   const esRows=fp.filter(f=>f.asig==='ESTRUCTURA').map(f=>[
-    `<span class="tdm">${f.prov}</span>`,f.tg,
+    `<span class="tdm">${provDeId(f.pv_id)||f.prov}</span>`,f.tg,
     `<span class="tdc">${fF(f.fe)}</span>`,
     `<span class="tdc rn">$ ${fN(f.tars)}</span>`,eB(f.ep)
   ]);
 
-  pg.innerHTML=sg([
-    {l:'Honorarios E-COMEX (Rentabilidad)',v:'$ '+fN(totHonARS),s:totHonEst>0?'Incluye $ '+fN(totHonEst)+' estimados':'',c:'gn'},
-    {l:'Facturado Bruto Clientes',v:'$ '+fN(totFacBruto),s:totReint>0?'Reintegros: $ '+fN(totReint):'',c:'bl'},
-    {l:'Gastos de Estructura',v:'$ '+fN(tES),c:'pu'},
-    {l:'Rentabilidad Neta',v:'$ '+fN(totHonARS-tES),s:'Honorarios − Estructura',c:(totHonARS-tES)>=0?'gn':'rd'},
+  pg.innerHTML=tabsHTML+sg([
+    {l:'Rentabilidad Base Total',v:'$ '+fN(totBase),s:'Suma de honorarios (fijo, referencia)',c:'gn'},
+    {l:'Rentabilidad Real (cobrada)',v:'$ '+fN(totReal),s:'Solo operaciones con cobro registrado',c:'bl'},
+    {l:'Gastos de Operación',v:'$ '+fN(totGastosOp),s:'Facturas de proveedor vinculadas a expedientes',c:'og'},
+    {l:'Gastos de Estructura',v:'$ '+fN(tES),c:'rd'},
+    {l:'Rentabilidad Neta Global',v:'$ '+fN(totReal-tES),s:'Real cobrada − Estructura',c:(totReal-tES)>=0?'gn':'rd'},
   ])+`
   <div class="card"><div class="ch">
     <span class="cn">Rentabilidad por Operación</span>
-    <span style="font-size:11px;color:var(--tx3)">Honorarios E-COMEX = rentabilidad real · Facturado = total al cliente (incluye reintegros de gastos)</span>
+    <span style="font-size:11px;color:var(--tx3)">Base = Honorario del presupuesto (fijo, no cambia) · Real = Cobrado − Gastos (dinámico)</span>
   </div><div class="cb">
-    ${tbl(['Expediente','Cliente','Estado','Facturado al Cliente','Estado Cobro','Honorarios E-COMEX ✦'],opRows)}
+    ${tbl(['Expediente','Cliente','Estado','Rent. Base','Gastos Op.','Estado Cobro','Rent. Real'],opRows)}
   </div></div>
   <div class="card"><div class="ch"><span class="cn">Gastos de Estructura</span></div><div class="cb">
     ${tbl(['Proveedor','Tipo de Gasto','Fecha','Total','Estado'],esRows)}
@@ -1112,7 +1191,7 @@ function rstEx(r={}){['exp','pais','f_ap','f_cl','tc','hon_usd','hon_ars','impor
 function rstFP(r={}){oPv('fp-pv',r.pv_id||'');oTG('fp-tg',r.tg_id||'');oOp('fp-op',r.op_id||'');['fe','fv','nro','notas'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||'';});if($('fp-asig'))$('fp-asig').value=r.asig||'ESTRUCTURA';if($('fp-ep'))$('fp-ep').value=r.ep||'PENDIENTE';if($('fp-tc2'))$('fp-tc2').value=r.tipo_comp||r.tc||'Factura A';['n21','n105','n27','n5','n0'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||0;});if($('fp-mon'))$('fp-mon').value=r.mon||'ARS';if($('fp-tc'))$('fp-tc').value=r.tc||lTC();cIVA('fp');}
 function rstFE(r={}){oCl('fe-cl',r.cl_id||'');oOp('fe-op',r.op_id||'',editIdx<0);['fe','fv','nro','concepto','notas'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||'';});if($('fe-ec'))$('fe-ec').value=r.ec||'PENDIENTE';if($('fe-tc2'))$('fe-tc2').value=r.tipo_comp||r.tc||'Factura A';['n21','n27','n105','n5','n0'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||0;});if($('fe-reint'))$('fe-reint').value=r.reint||0;if($('fe-mon'))$('fe-mon').value=r.mon||'USD';if($('fe-tc'))$('fe-tc').value=r.tc_v||r.tc||lTC();cIVA('fe');}
 function rstPg(r={}){oFP('pg-fac',r.fac_id||'',!r.id);oPv('pg-pv',r.pv_id||'');if($('pg-fp'))$('pg-fp').value=r.fp||'';if($('pg-forma')){$('pg-forma').value=r.forma||'Transferencia Bancaria';tgChq('pg');}['banco','ref','f_ac','obs'].forEach(f=>{const el=$('pg-'+f);if(el)el.value=r[f]||'';});if($('pg-mars'))$('pg-mars').value=r.mars||0;if($('pg-musd'))$('pg-musd').value=r.musd||0;if($('pg-mon'))$('pg-mon').value=r.mon||'ARS';['chqb','chqn','chqf'].forEach(f=>{const el=$('pg-'+f);if(el)el.value=r[f]||'';});}
-function rstCb(r={}){oFE('cb-fac',r.fac_id||'',!r.id);oCl('cb-cl',r.cl_id||'');if($('cb-fc'))$('cb-fc').value=r.fc||'';if($('cb-forma')){$('cb-forma').value=r.forma||'Transferencia Bancaria';tgChq('cb');}['banco','ref','f_ac','obs'].forEach(f=>{const el=$('cb-'+f);if(el)el.value=r[f]||'';});if($('cb-mars'))$('cb-mars').value=r.mars||0;if($('cb-musd'))$('cb-musd').value=r.musd||0;if($('cb-mon'))$('cb-mon').value=r.mon||'ARS';['chqb','chqn','chqf'].forEach(f=>{const el=$('cb-'+f);if(el)el.value=r[f]||'';});}
+function rstCb(r={}){oOp('cb-op',r.op_id||'');oFE('cb-fac',r.fac_id||'',!r.id);oCl('cb-cl',r.cl_id||'');if($('cb-fc'))$('cb-fc').value=r.fc||'';if($('cb-forma')){$('cb-forma').value=r.forma||'Transferencia Bancaria';tgChq('cb');}['banco','ref','f_ac','obs'].forEach(f=>{const el=$('cb-'+f);if(el)el.value=r[f]||'';});if($('cb-mars'))$('cb-mars').value=r.mars||0;if($('cb-musd'))$('cb-musd').value=r.musd||0;if($('cb-mon'))$('cb-mon').value=r.mon||'ARS';['chqb','chqn','chqf'].forEach(f=>{const el=$('cb-'+f);if(el)el.value=r[f]||'';});}
 
 // ═══ SAVE RECORDS ════════════════════════════
 async function gPv(){
@@ -1243,13 +1322,16 @@ async function gPg(){
 }
 async function gCb(){
   const fc=v('cb-fc');if(!fc){toast('La fecha es obligatoria','er');return;}
+  const opId=parseInt(v('cb-op'))||0;
+  if(!opId){toast('Seleccioná el expediente al que corresponde esta cobranza','er');return;}
   const facId=parseInt(v('cb-fac'))||0;const cliId=parseInt(v('cb-cl'))||0;
   const fac=D.facturas_emit.find(f=>f.id===facId)||{};const cli=D.clientes.find(c=>c.id===cliId)||{};
+  const op=D.operaciones.find(o=>o.id===opId)||{};
   const isEdit=editIdx>=0;
-  const rec={id:isEdit?D.cobranzas[editIdx].id:nid(D.cobranzas),fc,fac_id:facId||null,nro_a:fac.nro||'',cl_id:cliId||null,cliente:cli.razon||'',forma:v('cb-forma')||'',banco:v('cb-banco')||'',ref:v('cb-ref')||'',f_ac:v('cb-f_ac')||null,mars:parseFloat(v('cb-mars'))||0,musd:parseFloat(v('cb-musd'))||0,mon:v('cb-mon')||'ARS',chqb:v('cb-chqb')||'',chqn:v('cb-chqn')||'',chqf:v('cb-chqf')||'',obs:v('cb-obs')||''};
+  const rec={id:isEdit?D.cobranzas[editIdx].id:nid(D.cobranzas),fc,op_id:opId,op:op.exp||'',fac_id:facId||null,nro_a:fac.nro||'',cl_id:cliId||null,cliente:cli.razon||'',forma:v('cb-forma')||'',banco:v('cb-banco')||'',ref:v('cb-ref')||'',f_ac:v('cb-f_ac')||null,mars:parseFloat(v('cb-mars'))||0,musd:parseFloat(v('cb-musd'))||0,mon:v('cb-mon')||'ARS',chqb:v('cb-chqb')||'',chqn:v('cb-chqn')||'',chqf:v('cb-chqf')||'',obs:v('cb-obs')||''};
   const okCb=await save('cobranzas',rec,isEdit);if(!okCb)return;
   if(facId){await sb.from('facturas_emit').update({ec:'COBRADA'}).eq('id',facId);await loadT('facturas_emit');}
-  editIdx=-1;cM('m-cb');toast('Cobranza registrada ✓');render('cobs');
+  editIdx=-1;cM('m-cb');toast('Cobranza registrada ✓ — vinculada a '+(op.exp||'expediente'));render('cobs');
 }
 async function gTG(){
   const cat=v('tg-cat').trim().toUpperCase(),nom=v('tg-nom').trim();
@@ -1591,6 +1673,7 @@ async function aprobarPres(i){
   const presActualizado={...p, estado:'Aprobado', op_id:opCreado?.id||null};
   const okPres=await save('presupuestos',presActualizado,true);
   if(!okPres){toast('Expediente creado pero error al actualizar presupuesto','er');return;}
+
   toast('✅ Presupuesto aprobado → Expediente '+expNro+' creado y activo');
   render('pres');
 }
@@ -1770,6 +1853,7 @@ function _doPPT(i){
 
 // ═══ PDF UPLOAD MODULE ═══════════════════════
 let pdfFile=null;
+
 // ═══ PDF INTELIGENTE ═════════════════════════
 let pdfExtracted = null; // datos extraídos por Claude
 
@@ -2327,8 +2411,10 @@ function clearPdf(){
   <div class="mh"><span class="mt">Registrar Cobranza</span><button class="xb" onclick="cM('m-cb')">×</button></div>
   <div class="mb"><div class="fg">
     <div class="fgrp"><label class="flbl">Fecha de Cobro *</label><input type="date" class="fc" id="cb-fc"></div>
-    <div class="fgrp"><label class="flbl">Factura (solo pendientes)</label><select class="fc" id="cb-fac" onchange="afFacCb('cb-fac')"></select></div>
+    <div class="fgrp"><label class="flbl">Expediente *</label><select class="fc" id="cb-op" onchange="afOpCb()"></select>
+      <small style="color:var(--tx3)">La cobranza se vincula al expediente para calcular la rentabilidad real, con o sin factura</small></div>
     <div class="fgrp"><label class="flbl">Cliente</label><select class="fc" id="cb-cl"></select></div>
+    <div class="fgrp"><label class="flbl">Factura (opcional / informativa)</label><select class="fc" id="cb-fac" onchange="afFacCb('cb-fac')"></select></div>
     <div class="fgrp"><label class="flbl">Forma de Cobro</label>
       <select class="fc" id="cb-forma" onchange="tgChq('cb')">
         <option>Transferencia Bancaria</option><option>Cheque</option><option>Efectivo</option><option>Mercado Pago</option><option>Tarjeta de Crédito</option>
