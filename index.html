@@ -1427,7 +1427,7 @@ async function gFE(){
   if(ec==='COBRADA'&&confirm('Factura registrada como COBRADA.\n\n¿Registrás la cobranza ahora?')){
     const facReal=D.facturas_emit.find(f=>f.nro===datosE.nro&&f.cl_id===cliId);
     const facIdReal=facReal?facReal.id:datosE.id;
-    setTimeout(()=>{editIdx=-1;oM('m-cb');oFE('cb-fac',facIdReal,false);oCl('cb-cl',cliId);if($('cb-fc'))$('cb-fc').value=new Date().toISOString().slice(0,10);if($('cb-mars'))$('cb-mars').value=tars.toFixed(2);if($('cb-musd'))$('cb-musd').value=tusd.toFixed(2);if($('cb-mon'))$('cb-mon').value=mon;},300);
+    setTimeout(()=>{editIdx=-1;oM('m-cb',{op_id:datosE.op_id});oFE('cb-fac',facIdReal,false);oCl('cb-cl',cliId);if($('cb-fc'))$('cb-fc').value=new Date().toISOString().slice(0,10);if($('cb-mars'))$('cb-mars').value=tars.toFixed(2);if($('cb-musd'))$('cb-musd').value=tusd.toFixed(2);if($('cb-mon'))$('cb-mon').value=mon;},300);
   }else{toast('Factura registrada ✓');}
   render('femit');
 }
@@ -1443,9 +1443,15 @@ async function gPg(){
 }
 async function gCb(){
   const fc=v('cb-fc');if(!fc){toast('La fecha es obligatoria','er');return;}
-  const opId=parseInt(v('cb-op'))||0;
-  if(!opId){toast('Seleccioná el expediente al que corresponde esta cobranza','er');return;}
-  const facId=parseInt(v('cb-fac'))||0;const cliId=parseInt(v('cb-cl'))||0;
+  let opId=parseInt(v('cb-op'))||0;
+  const facId=parseInt(v('cb-fac'))||0;
+  // Fallback: si no eligieron expediente pero sí una factura, resolver desde ahí
+  if(!opId&&facId){
+    const facLink=D.facturas_emit.find(f=>f.id===facId);
+    if(facLink&&facLink.op_id)opId=facLink.op_id;
+  }
+  if(!opId){toast('⚠️ Seleccioná el expediente al que corresponde esta cobranza','er');return;}
+  const cliId=parseInt(v('cb-cl'))||0;
   const fac=D.facturas_emit.find(f=>f.id===facId)||{};const cli=D.clientes.find(c=>c.id===cliId)||{};
   const op=D.operaciones.find(o=>o.id===opId)||{};
   const isEdit=editIdx>=0;
