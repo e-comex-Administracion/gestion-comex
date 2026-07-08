@@ -287,9 +287,19 @@ function gastosOp(o){
   // Suma de todas las facturas de proveedor cargadas a esta operación (sin importar si están pagadas)
   return D.facturas_prov.filter(f=>f.op_id===o.id).reduce((a,f)=>a+(f.tars||0),0);
 }
+function opIdDeCobranza(c){
+  // Resuelve a qué expediente pertenece una cobranza: directo, o via la factura emitida vinculada
+  if(c.op_id) return c.op_id;
+  if(c.fac_id){
+    const f=D.facturas_emit.find(x=>x.id===c.fac_id);
+    if(f&&f.op_id) return f.op_id;
+  }
+  return null;
+}
 function cobradoOp(o){
-  // Suma de todas las cobranzas vinculadas DIRECTAMENTE a esta operación
-  return D.cobranzas.filter(c=>c.op_id===o.id).reduce((a,c)=>a+(c.mars||0),0);
+  // Suma de todas las cobranzas de esta operación: directas por op_id,
+  // o indirectas si están vinculadas a una factura emitida de esta operación.
+  return D.cobranzas.filter(c=>opIdDeCobranza(c)===o.id).reduce((a,c)=>a+(c.mars||0),0);
 }
 function rentExpEsperada(o){
   // Rentabilidad BASE = Honorario del presupuesto, FIJO. No se resta nada acá.
@@ -589,7 +599,7 @@ function vExp(idx){
 
   const fps=D.facturas_prov.filter(f=>f.op_id===o.id);
   const fes=D.facturas_emit.filter(f=>f.op_id===o.id); // informativas
-  const cobs=D.cobranzas.filter(c=>c.op_id===o.id); // reales, vinculadas al expediente
+  const cobs=D.cobranzas.filter(c=>opIdDeCobranza(c)===o.id); // reales, vinculadas al expediente (directo o vía factura)
 
   const honBase=honBaseOp(o);
   const gastos=gastosOp(o);
@@ -718,15 +728,41 @@ function rCobs(pg,ac){
     x=>`${x.c.cliente} ${x.c.nro_a||''} ${x.c.banco||''}`,
     {fecha:x=>x.c.fc||'',cliente:x=>x.c.cliente||'',monto:x=>x.c.mars||0}
   );
-  pg.innerHTML=`<div class="card"><div class="ch"><span class="cn">Registro de Cobranzas</span></div><div class="cb">
+  const sinVincular=D.cobranzas.filter(c=>!opIdDeCobranza(c)).length;
+  const opOpts=[...D.operaciones].sort((a,b)=>(b.f_ap||'').localeCompare(a.f_ap||'')).map(o=>`<option value="${o.id}">${o.exp} — ${clienteDeId(o.cli_id)||o.cliente}</option>`).join('');
+  pg.innerHTML=`<div class="card"><div class="ch"><span class="cn">Registro de Cobranzas</span>
+      ${sinVincular>0?`<span style="font-size:11px;color:var(--org);font-weight:600">⚠️ ${sinVincular} cobranza(s) sin vincular a un expediente — no suman a la rentabilidad real hasta asignarlas</span>`:''}
+    </div><div class="cb">
     ${fbar('cobs',[{k:'fecha',l:'Fecha cobro'},{k:'cliente',l:'Cliente'},{k:'monto',l:'Monto'}],'Buscar cliente, factura, banco...')}
-    ${tbl(['Fecha','Cliente','Factura ARCA','Forma de Cobro','Banco','Monto ARS','Monto USD','Acciones'],
-      itemsF.map(({c,i})=>[
-        `<span class="tdc">${fF(c.fc)}</span>`,
-        `<span class="tdm">${clienteDeId(c.cl_id)||c.cliente}</span>`,
-        `<span class="tdc" style="font-size:10px">${c.nro_a||'-'}</span>`,c.forma,c.banco||'-',
-        `<span class="tdc rp">$ ${fN(c.mars)}</span>`,fU(c.musd),ac2('cobranzas',i)
-      ]))}</div></div>`;
+    ${tbl(['Fecha','Cliente','Expediente','Factura ARCA','Forma de Cobro','Banco','Monto ARS','Monto USD','Acciones'],
+      itemsF.map(({c,i})=>{
+        const opId=opIdDeCobranza(c);
+        const expCell=opId
+          ?`<span style="color:var(--acc);font-weight:600;font-size:11px">${expDeId(opId)}</span>`
+          :`<div style="display:flex;gap:4px;align-items:center">
+              <select class="fc" id="qop-${i}" style="font-size:11px;padding:4px 6px;max-width:140px"><option value="">-- Expediente --</option>${opOpts}</select>
+              <button class="btn bgrn bs" onclick="asignarOpCobranza(${i})" title="Vincular">✔</button>
+            </div>`;
+        return[
+          `<span class="tdc">${fF(c.fc)}</span>`,
+          `<span class="tdm">${clienteDeId(c.cl_id)||c.cliente}</span>`,
+          expCell,
+          `<span class="tdc" style="font-size:10px">${c.nro_a||'-'}</span>`,c.forma,c.banco||'-',
+          `<span class="tdc rp">$ ${fN(c.mars)}</span>`,fU(c.musd),ac2('cobranzas',i)
+        ];
+      }))}</div></div>`;
+}
+async function asignarOpCobranza(i){
+  const sel=$('qop-'+i);
+  const opId=parseInt(sel?.value)||0;
+  if(!opId){toast('Seleccioná un expediente','er');return;}
+  const c=D.cobranzas[i];
+  const op=D.operaciones.find(o=>o.id===opId);
+  const {error}=await sb.from('cobranzas').update({op_id:opId,op:op?.exp||''}).eq('id',c.id);
+  if(error){toast('Error: '+error.message,'er');return;}
+  await loadT('cobranzas');
+  toast('Cobranza vinculada a '+(op?.exp||'expediente')+' ✓');
+  render('cobs');
 }
 
 function rCheqs(pg){
@@ -909,7 +945,7 @@ function rRent(pg){
       {l:'Resultado Neto Histórico',v:'$ '+fN(totCobrado-totEstructura),c:(totCobrado-totEstructura)>=0?'gn':'rd'},
     ])+`<div class="card"><div class="ch">
       <span class="cn">📅 Rentabilidad General por Mes</span>
-      <span style="font-size:11px;color:var(--tx3)">Cobrado del mes (todas las operaciones) − Gastos de Estructura del mes. Los gastos de cada expediente ya están descontados en su Rentabilidad Real y no participan acá.</span>
+      <span style="font-size:11px;color:var(--tx3)">Suma de los cobros reales del mes (la parte de la Rentabilidad Real de cada expediente que se concretó ese mes) − Gastos de Estructura con fecha en ese mes. Los gastos propios de cada expediente no participan acá porque ya están descontados en su Rentabilidad Real individual.</span>
     </div><div class="cb">
       ${tbl(['Mes','Cobrado','Gastos Estructura','Resultado Neto'],rows,'Sin cobranzas registradas aún')}
     </div></div>`;
