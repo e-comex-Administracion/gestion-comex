@@ -283,15 +283,19 @@ function honBaseOp(o){
   if((o.hon_usd||0)>0) return o.hon_usd*tcOp;
   return 0;
 }
+function esNotaCredito(f){ return (f.tipo_comp||'')==='Nota de Crédito'; }
+function signoFP(f){ return esNotaCredito(f)?-1:1; }
 function gastosOp(o){
   // Suma de gastos asignados a esta operación: soporta facturas divididas entre varios expedientes
+  // y notas de débito (suman) / crédito (restan)
   let total=0;
   D.facturas_prov.forEach(f=>{
+    const signo=signoFP(f);
     if(f.asignaciones&&f.asignaciones.length){
-      f.asignaciones.forEach(a=>{ if(a.op_id===o.id) total+=(a.monto||0); });
+      f.asignaciones.forEach(a=>{ if(a.op_id===o.id) total+=signo*(a.monto||0); });
     } else if(f.op_id===o.id){
       // Compatibilidad con facturas viejas sin desglose
-      total+=(f.tars||0);
+      total+=signo*(f.tars||0);
     }
   });
   return total;
@@ -472,6 +476,13 @@ function onFpAsigChange(){
   const asig=$('fp-asig')?.value;
   const wrap=$('fp-asign-wrap');
   if(wrap)wrap.style.display=asig==='ESTRUCTURA'?'none':'block';
+  const mesWrap=$('fp-mesaplica-wrap');
+  if(mesWrap)mesWrap.style.display=asig==='ESTRUCTURA'?'block':'none';
+  // Si es Nota de Crédito, avisar visualmente en el check de asignación
+  const tipoComp=$('fp-tc2')?.value||'';
+  const esNC=tipoComp==='Nota de Crédito';
+  const asignCheck=$('fp-asign-check');
+  if(esNC&&asignCheck)asignCheck.innerHTML='<span style="color:var(--org)">↓ Nota de Crédito: este monto va a RESTAR de los gastos</span>';
 }
 function updateFpAsignCheck(){
   const el=$('fp-asign-check');
@@ -543,7 +554,7 @@ function rDash(pg){
 
   // Gastos pend pago
   const pp=fp.filter(f=>f.ep==='PENDIENTE');
-  const tpp=pp.reduce((a,f)=>a+(f.tars||0),0);
+  const tpp=pp.reduce((a,f)=>a+signoFP(f)*(f.tars||0),0);
 
   // Tabla por expediente
   const semRows=oa.map(o=>{
@@ -749,9 +760,10 @@ function rFProv(pg,ac){
       itemsF.map(({f,i})=>[
         `<span class="tdc">${fF(f.fe)}</span>`,`<span class="tdc">${fF(f.fv)}</span>`,
         `<span class="tdm">${provDeId(f.pv_id)||f.prov}</span>`,
-        `<span class="tdc" style="font-size:10px">${f.nro}</span>`,f.tg,`<span class="tdc">$ ${fN(f.tars)}</span>`,f.mon,
+        `<span class="tdc" style="font-size:10px">${f.nro}${esNotaCredito(f)?' <span class="bg bgo" style="font-size:9px">NC</span>':f.tipo_comp==='Nota de Débito'?' <span class="bg bgb" style="font-size:9px">ND</span>':''}</span>`,f.tg,
+        `<span class="tdc ${esNotaCredito(f)?'rp':''}">${esNotaCredito(f)?'-':''}$ ${fN(f.tars)}</span>`,f.mon,
         `<span class="bg ${f.asig==='OPERACION'?'bgb':'bgp'}">${f.asig}</span>`,
-        (f.asignaciones&&f.asignaciones.length>1)?`<span style="color:var(--acc);font-size:11px" title="${f.asignaciones.map(a=>a.exp+': $'+fN(a.monto)).join(' · ')}">🔀 ${f.asignaciones.length} expedientes</span>`:(expDeId(f.op_id)||f.op||'-'),eB(f.ep),ac2('facturas_prov',i)
+        (f.asignaciones&&f.asignaciones.length>1)?`<span style="color:var(--acc);font-size:11px" title="${f.asignaciones.map(a=>a.exp+': $'+fN(a.monto)).join(' · ')}">🔀 ${f.asignaciones.length} expedientes</span>`:(f.asig==='ESTRUCTURA'?(f.mes_aplica||(f.fe?f.fe.substring(0,7):'-')):(expDeId(f.op_id)||f.op||'-')),eB(f.ep),ac2('facturas_prov',i)
       ]))}</div></div>`;
 }
 
@@ -983,10 +995,10 @@ function rRent(pg){
       meses[m].cobrado+=(c.mars||0);
     });
     fp.filter(f=>f.asig==='ESTRUCTURA').forEach(f=>{
-      if(!f.fe)return;
-      const m=f.fe.substring(0,7);
+      const m=f.mes_aplica||(f.fe?f.fe.substring(0,7):null);
+      if(!m)return;
       if(!meses[m])meses[m]={cobrado:0,estructura:0};
-      meses[m].estructura+=(f.tars||0);
+      meses[m].estructura+=signoFP(f)*(f.tars||0);
     });
     const mesesOrd=Object.keys(meses).sort().reverse();
     const nombreMes=m=>{
@@ -1022,7 +1034,7 @@ function rRent(pg){
   }
 
   // ── RENTABILIDAD POR OPERACIÓN ──
-  const tES=fp.filter(f=>f.asig==='ESTRUCTURA').reduce((a,f)=>a+(f.tars||0),0);
+  const tES=fp.filter(f=>f.asig==='ESTRUCTURA').reduce((a,f)=>a+signoFP(f)*(f.tars||0),0);
   let totBase=0,totReal=0,totGastosOp=0;
 
   const opRows=D.operaciones.map(o=>{
@@ -1036,7 +1048,7 @@ function rRent(pg){
     if(cobrado>0)totReal+=real;
 
     const baseCell=`<span class="tdc" style="color:var(--tx2)">$ ${fN(honBase)}</span>`;
-    const gastosCell=gastos>0?`<span class="tdc rn">$ ${fN(gastos)}</span>`:`<span style="color:var(--tx3);font-size:11px">—</span>`;
+    const gastosCell=gastos!==0?`<span class="tdc ${gastos>0?'rn':'rp'}">$ ${fN(gastos)}</span>`:`<span style="color:var(--tx3);font-size:11px">—</span>`;
     const realCell=cobrado>0
       ?`<span class="tdc rp" style="font-weight:700">$ ${fN(real)}</span>`
       :`<span style="color:var(--tx3);font-size:11px">—</span>`;
@@ -1054,11 +1066,16 @@ function rRent(pg){
     ];
   });
 
-  const esRows=fp.filter(f=>f.asig==='ESTRUCTURA').map(f=>[
-    `<span class="tdm">${provDeId(f.pv_id)||f.prov}</span>`,f.tg,
-    `<span class="tdc">${fF(f.fe)}</span>`,
-    `<span class="tdc rn">$ ${fN(f.tars)}</span>`,eB(f.ep)
-  ]);
+  const esRows=fp.filter(f=>f.asig==='ESTRUCTURA').map(f=>{
+    const signo=signoFP(f);
+    const mes=f.mes_aplica||(f.fe?f.fe.substring(0,7):'-');
+    return[
+      `<span class="tdm">${provDeId(f.pv_id)||f.prov}${esNotaCredito(f)?' <span class="bg bgo" style="font-size:9px">NC</span>':''}</span>`,f.tg,
+      `<span class="tdc">${fF(f.fe)}</span>`,
+      `<span class="tdc" style="font-size:11px;color:var(--acc)">${mes}</span>`,
+      `<span class="tdc ${signo>0?'rn':'rp'}">${signo>0?'$ ':'-$ '}${fN(f.tars)}</span>`,eB(f.ep)
+    ];
+  });
 
   pg.innerHTML=tabsHTML+sg([
     {l:'Rentabilidad Base Total',v:'$ '+fN(totBase),s:'Suma de honorarios (fijo, referencia)',c:'gn'},
@@ -1074,7 +1091,7 @@ function rRent(pg){
     ${tbl(['Expediente','Cliente','Estado','Rent. Base','Gastos Op.','Cobrado','Rent. Real'],opRows)}
   </div></div>
   <div class="card"><div class="ch"><span class="cn">Gastos de Estructura</span></div><div class="cb">
-    ${tbl(['Proveedor','Tipo de Gasto','Fecha','Total','Estado'],esRows)}
+    ${tbl(['Proveedor','Tipo de Gasto','Fecha','Mes Aplicado','Total','Estado'],esRows)}
   </div></div>`;
 }
 
@@ -1290,7 +1307,7 @@ function edit(tabla,idx){
 function rstPv(r={}){editIdx=r.id?D.proveedores.findIndex(x=>x.id===r.id):-1;['razon','cuit','iva','tel','email','cpago','moneda','activo','notas'].forEach(f=>{const el=$('pv-'+f);if(el)el.value=r[f]||'';});oTG('pv-tg',r.tg_id||'');if(r.iva&&$('pv-iva'))$('pv-iva').value=r.iva;if(r.activo&&$('pv-activo'))$('pv-activo').value=r.activo;if(r.moneda&&$('pv-moneda'))$('pv-moneda').value=r.moneda;}
 function rstCl(r={}){editIdx=r.id?D.clientes.findIndex(x=>x.id===r.id):-1;['razon','cuit','iva','contacto','tel','email','rubro','cpago','moneda','activo','notas'].forEach(f=>{const el=$('cl-'+f);if(el)el.value=r[f]||'';});if(r.iva&&$('cl-iva'))$('cl-iva').value=r.iva;if(r.activo&&$('cl-activo'))$('cl-activo').value=r.activo;if(r.moneda&&$('cl-moneda'))$('cl-moneda').value=r.moneda;}
 function rstEx(r={}){['exp','pais','f_ap','f_cl','tc','hon_usd','hon_ars','importe_ref','f_cobro_est','notas'].forEach(f=>{const el=$('ex-'+f);if(el)el.value=r[f]||'';});if($('ex-tipo'))$('ex-tipo').value=r.tipo||'Importación Definitiva para Consumo';if($('ex-estado'))$('ex-estado').value=r.estado||'EN TRAMITE';if($('ex-moneda_ref'))$('ex-moneda_ref').value=r.moneda_ref||'USD';oCl('ex-cl',r.cli_id||'');}
-function rstFP(r={}){oPv('fp-pv',r.pv_id||'');oTG('fp-tg',r.tg_id||'');['fe','fv','nro','notas'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||'';});if($('fp-asig'))$('fp-asig').value=r.asig||'ESTRUCTURA';if($('fp-ep'))$('fp-ep').value=r.ep||'PENDIENTE';if($('fp-tc2'))$('fp-tc2').value=r.tipo_comp||r.tc||'Factura A';['n21','n105','n27','n5','n0'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||0;});if($('fp-mon'))$('fp-mon').value=r.mon||'ARS';if($('fp-tc'))$('fp-tc').value=r.tc||lTC();cIVA('fp');onFpAsigChange();}
+function rstFP(r={}){oPv('fp-pv',r.pv_id||'');oTG('fp-tg',r.tg_id||'');['fe','fv','nro','notas'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||'';});if($('fp-asig'))$('fp-asig').value=r.asig||'ESTRUCTURA';if($('fp-ep'))$('fp-ep').value=r.ep||'PENDIENTE';if($('fp-tc2'))$('fp-tc2').value=r.tipo_comp||r.tc||'Factura A';if($('fp-mes-aplica'))$('fp-mes-aplica').value=r.mes_aplica||(r.fe?r.fe.substring(0,7):'');['n21','n105','n27','n5','n0'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||0;});if($('fp-mon'))$('fp-mon').value=r.mon||'ARS';if($('fp-tc'))$('fp-tc').value=r.tc||lTC();cIVA('fp');onFpAsigChange();}
 function rstFE(r={}){oCl('fe-cl',r.cl_id||'');oOp('fe-op',r.op_id||'',editIdx<0);['fe','fv','nro','concepto','notas'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||'';});if($('fe-ec'))$('fe-ec').value=r.ec||'PENDIENTE';if($('fe-tc2'))$('fe-tc2').value=r.tipo_comp||r.tc||'Factura A';['n21','n27','n105','n5','n0'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||0;});if($('fe-reint'))$('fe-reint').value=r.reint||0;if($('fe-mon'))$('fe-mon').value=r.mon||'USD';if($('fe-tc'))$('fe-tc').value=r.tc_v||r.tc||lTC();cIVA('fe');}
 function rstPg(r={}){oFP('pg-fac',r.fac_id||'',!r.id);oPv('pg-pv',r.pv_id||'');if($('pg-fp'))$('pg-fp').value=r.fp||'';if($('pg-forma')){$('pg-forma').value=r.forma||'Transferencia Bancaria';tgChq('pg');}['banco','ref','f_ac','obs'].forEach(f=>{const el=$('pg-'+f);if(el)el.value=r[f]||'';});if($('pg-mars'))$('pg-mars').value=r.mars||0;if($('pg-musd'))$('pg-musd').value=r.musd||0;if($('pg-mon'))$('pg-mon').value=r.mon||'ARS';['chqb','chqn','chqf'].forEach(f=>{const el=$('pg-'+f);if(el)el.value=r[f]||'';});}
 function rstCb(r={}){oOp('cb-op',r.op_id||'');oFE('cb-fac',r.fac_id||'',!r.id);oCl('cb-cl',r.cl_id||'');if($('cb-fc'))$('cb-fc').value=r.fc||'';if($('cb-forma')){$('cb-forma').value=r.forma||'Transferencia Bancaria';tgChq('cb');}['banco','ref','f_ac','obs'].forEach(f=>{const el=$('cb-'+f);if(el)el.value=r[f]||'';});if($('cb-mars'))$('cb-mars').value=r.mars||0;if($('cb-musd'))$('cb-musd').value=r.musd||0;if($('cb-mon'))$('cb-mon').value=r.mon||'ARS';['chqb','chqn','chqf'].forEach(f=>{const el=$('cb-'+f);if(el)el.value=r[f]||'';});}
@@ -1402,7 +1419,7 @@ async function gFP(){
     }
   }
 
-  const datos={id:isEdit?D.facturas_prov[editIdx].id:nid(D.facturas_prov),fe:v('fp-fe')||null,fv:v('fp-fv')||null,pv_id:pvId,prov:pv.razon||'',nro:v('fp-nro'),tipo_comp:v('fp-tc2')||'Factura A',tg_id:tgId||null,tg:tg.nom||'',n21,i21,n27,i27,n105,i105,n5,i5,n0,tiva,neto,total,mon,tars,tusd,tc:tc,asig:asigTipo,op_id:opIdPrincipal,op:opNombrePrincipal,asignaciones,ep,notas:v('fp-notas')||''};
+  const datos={id:isEdit?D.facturas_prov[editIdx].id:nid(D.facturas_prov),fe:v('fp-fe')||null,fv:v('fp-fv')||null,pv_id:pvId,prov:pv.razon||'',nro:v('fp-nro'),tipo_comp:v('fp-tc2')||'Factura A',tg_id:tgId||null,tg:tg.nom||'',n21,i21,n27,i27,n105,i105,n5,i5,n0,tiva,neto,total,mon,tars,tusd,tc:tc,asig:asigTipo,op_id:opIdPrincipal,op:opNombrePrincipal,asignaciones,mes_aplica:asigTipo==='ESTRUCTURA'?(v('fp-mes-aplica')||(v('fp-fe')?v('fp-fe').substring(0,7):null)):null,ep,notas:v('fp-notas')||''};
   const ok=await save('facturas_prov',datos,isEdit);if(!ok)return;
   editIdx=-1;cM('m-fp');
   if(ep==='PAGADA'&&confirm('Factura guardada como PAGADA.\n\n¿Registrás el pago ahora?')){
@@ -2426,12 +2443,12 @@ function clearPdf(){
 <div class="mo" id="m-fp"><div class="md" style="max-width:740px">
   <div class="mh"><span class="mt">Factura de Proveedor</span><button class="xb" onclick="cM('m-fp')">×</button></div>
   <div class="mb"><div class="fg">
-    <div class="fgrp"><label class="flbl">Fecha Emisión *</label><input type="date" class="fc" id="fp-fe"></div>
+    <div class="fgrp"><label class="flbl">Fecha Emisión *</label><input type="date" class="fc" id="fp-fe" onchange="if($('fp-mes-aplica')&&!$('fp-mes-aplica').value)$('fp-mes-aplica').value=this.value.substring(0,7)"></div>
     <div class="fgrp"><label class="flbl">Fecha Vencimiento *</label><input type="date" class="fc" id="fp-fv"></div>
     <div class="fgrp"><label class="flbl">Proveedor *</label><select class="fc" id="fp-pv" onchange="afPvTG('fp-pv','fp-tg')"></select></div>
     <div class="fgrp"><label class="flbl">Nro. Factura</label><input class="fc" id="fp-nro" placeholder="FC-A 0001-00000001"></div>
     <div class="fgrp"><label class="flbl">Tipo Comprobante</label>
-      <select class="fc" id="fp-tc2"><option>Factura A</option><option>Factura B</option><option>Factura C</option><option>Ticket</option><option>Recibo</option></select></div>
+      <select class="fc" id="fp-tc2" onchange="onFpAsigChange()"><option>Factura A</option><option>Factura B</option><option>Factura C</option><option>Ticket</option><option>Recibo</option><option>Nota de Débito</option><option>Nota de Crédito</option></select></div>
     <div class="fgrp"><label class="flbl">Tipo de Gasto</label><select class="fc" id="fp-tg"></select></div>
     <div class="ibox">
       <div class="iboxt">Detalle de IVA</div>
@@ -2455,6 +2472,10 @@ function clearPdf(){
     </div>
     <div class="fgrp"><label class="flbl">Asignación</label><select class="fc" id="fp-asig" onchange="onFpAsigChange()"><option>OPERACION</option><option>ESTRUCTURA</option></select></div>
     <div class="fgrp"><label class="flbl">Estado Pago</label><select class="fc" id="fp-ep"><option>PENDIENTE</option><option>PAGADA</option></select></div>
+    <div class="fgrp" id="fp-mesaplica-wrap"><label class="flbl">Mes de Aplicación (gasto de estructura)</label>
+      <input type="month" class="fc" id="fp-mes-aplica">
+      <small style="color:var(--tx3)">A qué mes imputamos este gasto en la Rentabilidad Mensual. Por defecto, el mes de la fecha de factura.</small>
+    </div>
     <div class="fgrp fsp" id="fp-asign-wrap">
       <label class="flbl">Distribución del gasto por Expediente</label>
       <div id="fp-asign-rows"></div>
