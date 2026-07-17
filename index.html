@@ -356,8 +356,13 @@ function oM(id,vals={}){
     if($('fe-tc')&&!vals.tc_v)$('fe-tc').value=lTC();
   }
   if(id==='m-pg'){
-    oFP('pg-fac',vals.fac_id||'',!vals.fac_id);
     oPv('pg-pv',vals.pv_id||'');
+    pgSelFacs=vals.fac_id?[vals.fac_id]:[];
+    renderPgFacList(vals.pv_id||0,vals.fac_id||null);
+    if(vals.fac_id){
+      const facOrigen=D.facturas_prov.find(f=>f.id===vals.fac_id);
+      if(facOrigen&&$('pg-mon'))$('pg-mon').value=facOrigen.mon||'ARS';
+    }
   }
   if(id==='m-cb'){
     oOp('cb-op',vals.op_id||'');
@@ -366,7 +371,7 @@ function oM(id,vals={}){
   }
   if(id==='m-ex'){oCl('ex-cl',vals.cli_id||'');}
   if(id==='m-pv'){oTG('pv-tg',vals.tg_id||'');}
-  if(id==='m-tg'){const dl=$('tg-dl');if(dl){const c=[...new Set(D.tipos_gasto.map(t=>t.cat))];dl.innerHTML=c.map(x=>`<option value="${x}">`).join('');}}
+  if(id==='m-tg'){const dl=$('tg-dl');if(dl){const c=[...new Set(D.tipos_gasto.map(t=>t.cat))].sort((a,b)=>(a||'').localeCompare(b||'','es',{sensitivity:'base'}));dl.innerHTML=c.map(x=>`<option value="${x}">`).join('');}}
   $(id).classList.add('show');
 }
 document.addEventListener('click',e=>{if(e.target.classList.contains('mo'))e.target.classList.remove('show');});
@@ -389,13 +394,55 @@ function provDeId(pv_id){if(!pv_id)return'';const p=D.proveedores.find(x=>x.id==
 
 // ═══ SELECT POPULATORS ═══════════════════════
 function oPv(id,val=''){const el=$(id);if(!el)return;const ordenados=[...D.proveedores].sort((a,b)=>(a.razon||'').localeCompare(b.razon||'','es',{sensitivity:'base'}));el.innerHTML='<option value="">-- Seleccionar --</option>'+ordenados.map(p=>`<option value="${p.id}" ${p.id==val?'selected':''}>${p.razon}</option>`).join('');}
-function oCl(id,val=''){const el=$(id);if(!el)return;el.innerHTML='<option value="">-- Seleccionar --</option>'+D.clientes.map(c=>`<option value="${c.id}" ${c.id==val?'selected':''}>${c.razon}</option>`).join('');}
-function oOp(id,val='',onlyNew=false){const el=$(id);if(!el)return;let ops=D.operaciones.filter(o=>o.estado!=='CANCELADA');if(onlyNew){const done=new Set(D.facturas_emit.map(f=>f.op_id));ops=ops.filter(o=>!done.has(o.id)||o.id==val);}el.innerHTML='<option value="">-- Sin asignar --</option>'+ops.map(o=>`<option value="${o.id}" ${o.id==val?'selected':''}>${o.exp} — ${o.cliente} (${o.estado})</option>`).join('');}
-function oTG(id,val=''){const el=$(id);if(!el)return;el.innerHTML='<option value="">-- Seleccionar --</option>'+D.tipos_gasto.map(t=>`<option value="${t.id}" ${t.id==val?'selected':''}>${t.nom} (${t.cat})</option>`).join('');}
+function oCl(id,val=''){const el=$(id);if(!el)return;const ordenados=[...D.clientes].sort((a,b)=>(a.razon||'').localeCompare(b.razon||'','es',{sensitivity:'base'}));el.innerHTML='<option value="">-- Seleccionar --</option>'+ordenados.map(c=>`<option value="${c.id}" ${c.id==val?'selected':''}>${c.razon}</option>`).join('');}
+function oOp(id,val='',onlyNew=false){const el=$(id);if(!el)return;let ops=D.operaciones.filter(o=>o.estado!=='CANCELADA');if(onlyNew){const done=new Set(D.facturas_emit.map(f=>f.op_id));ops=ops.filter(o=>!done.has(o.id)||o.id==val);}ops=[...ops].sort((a,b)=>(a.exp||'').localeCompare(b.exp||'','es',{numeric:true,sensitivity:'base'}));el.innerHTML='<option value="">-- Sin asignar --</option>'+ops.map(o=>`<option value="${o.id}" ${o.id==val?'selected':''}>${o.exp} — ${clienteDeId(o.cli_id)||o.cliente} (${o.estado})</option>`).join('');}
+function oTG(id,val=''){const el=$(id);if(!el)return;const ordenados=[...D.tipos_gasto].sort((a,b)=>(a.nom||'').localeCompare(b.nom||'','es',{sensitivity:'base'}));el.innerHTML='<option value="">-- Seleccionar --</option>'+ordenados.map(t=>`<option value="${t.id}" ${t.id==val?'selected':''}>${t.nom} (${t.cat})</option>`).join('');}
 function oFP(id,val='',onlyPend=true){const el=$(id);if(!el)return;let fps=onlyPend?D.facturas_prov.filter(f=>f.ep==='PENDIENTE'):D.facturas_prov;el.innerHTML='<option value="">-- Seleccionar --</option>'+fps.map(f=>`<option value="${f.id}" ${f.id==val?'selected':''}>${f.nro} — ${f.prov} — $ ${fN(f.tars)}</option>`).join('');}
-function oFE(id,val='',onlyPend=true){const el=$(id);if(!el)return;let fes=onlyPend?D.facturas_emit.filter(f=>f.ec==='PENDIENTE'):D.facturas_emit;el.innerHTML='<option value="">-- Seleccionar --</option>'+fes.map(f=>`<option value="${f.id}" ${f.id==val?'selected':''}>${f.nro} — ${f.cliente} — $ ${fN(f.tars)}</option>`).join('');}
+function oFE(id,val='',onlyPend=true){const el=$(id);if(!el)return;let fes=onlyPend?D.facturas_emit.filter(f=>f.ec==='PENDIENTE'):D.facturas_emit;fes=[...fes].sort((a,b)=>(clienteDeId(a.cl_id)||a.cliente||'').localeCompare(clienteDeId(b.cl_id)||b.cliente||'','es',{sensitivity:'base'}));el.innerHTML='<option value="">-- Seleccionar --</option>'+fes.map(f=>`<option value="${f.id}" ${f.id==val?'selected':''}>${f.nro} — ${clienteDeId(f.cl_id)||f.cliente} — $ ${fN(f.tars)}</option>`).join('');}
 function afPvTG(pvSelId,tgSelId){const pvId=parseInt($(pvSelId)?.value)||0;const pv=D.proveedores.find(p=>p.id===pvId);if(pv&&pv.tg_id&&$(tgSelId))$(tgSelId).value=pv.tg_id;}
-function afFacPg(facId){const f=D.facturas_prov.find(x=>x.id==facId);if(!f)return;if($('pg-pv'))$('pg-pv').value=f.pv_id||'';if($('pg-mars'))$('pg-mars').value=f.tars||0;if($('pg-musd'))$('pg-musd').value=f.tusd||0;if($('pg-mon'))$('pg-mon').value=f.mon||'ARS';}
+// ═══ PAGO: selección múltiple de facturas de un mismo proveedor ═══
+let pgSelFacs=[];
+function onPgPvChange(){
+  const pvId=parseInt($('pg-pv')?.value)||0;
+  pgSelFacs=[];
+  renderPgFacList(pvId);
+}
+function renderPgFacList(pvId,extraFacId=null){
+  const wrap=$('pg-fac-list');
+  if(!wrap)return;
+  let facs=D.facturas_prov.filter(f=>f.pv_id===pvId&&f.ep==='PENDIENTE'&&!esNotaCredito(f));
+  if(extraFacId&&!facs.some(f=>f.id===extraFacId)){
+    const extra=D.facturas_prov.find(f=>f.id===extraFacId);
+    if(extra)facs=[extra,...facs];
+  }
+  facs.sort((a,b)=>(a.fv||'').localeCompare(b.fv||''));
+  if(!facs.length){
+    wrap.innerHTML='<div style="color:var(--tx3);font-size:12px;text-align:center;padding:10px">Sin facturas pendientes para este proveedor</div>';
+    updatePgFacTotal();
+    return;
+  }
+  wrap.innerHTML=facs.map(f=>`
+    <label style="display:flex;align-items:center;gap:8px;padding:6px 4px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--br)">
+      <input type="checkbox" value="${f.id}" ${pgSelFacs.includes(f.id)?'checked':''} onchange="togglePgFac(${f.id},this.checked)">
+      <span style="flex:1">${f.nro||'S/N'} · vto. ${fF(f.fv)}</span>
+      <span style="font-weight:600">$ ${fN(f.tars)}</span>
+    </label>`).join('');
+  updatePgFacTotal();
+}
+function togglePgFac(facId,checked){
+  if(checked){ if(!pgSelFacs.includes(facId))pgSelFacs.push(facId); }
+  else{ pgSelFacs=pgSelFacs.filter(x=>x!==facId); }
+  updatePgFacTotal();
+}
+function updatePgFacTotal(){
+  const facs=pgSelFacs.map(id=>D.facturas_prov.find(f=>f.id===id)).filter(Boolean);
+  const totalArs=facs.reduce((a,f)=>a+(f.tars||0),0);
+  const totalUsd=facs.reduce((a,f)=>a+(f.tusd||0),0);
+  if($('pg-mars'))$('pg-mars').value=totalArs?totalArs.toFixed(2):'';
+  if($('pg-musd'))$('pg-musd').value=totalUsd?totalUsd.toFixed(2):'';
+  const el=$('pg-fac-total');
+  if(el)el.innerHTML=facs.length?`<span style="color:var(--gn);font-weight:600">✓ ${facs.length} factura(s) seleccionada(s) · Total: $ ${fN(totalArs)}</span>`:'<span style="color:var(--tx3)">Sin facturas seleccionadas</span>';
+}
 function afFacCb(facId){const f=D.facturas_emit.find(x=>x.id==facId);if(!f)return;if($('cb-cl'))$('cb-cl').value=f.cl_id||'';if($('cb-mars'))$('cb-mars').value=f.tars||0;if($('cb-musd'))$('cb-musd').value=f.tusd||0;if($('cb-mon'))$('cb-mon').value=f.mon||'ARS';}
 function afOpCb(){
   const opId=parseInt($('cb-op')?.value)||0;
@@ -406,6 +453,7 @@ function afOpCb(){
   const facSel=$('cb-fac');
   if(facSel){
     const facsDelOp=D.facturas_emit.filter(f=>f.op_id===opId&&f.ec!=='COBRADA');
+    facsDelOp.sort((a,b)=>(a.nro||'').localeCompare(b.nro||'','es',{numeric:true,sensitivity:'base'}));
     facSel.innerHTML='<option value="">-- Sin factura (cobro directo) --</option>'+facsDelOp.map(f=>`<option value="${f.id}">${f.nro||'S/N'} — $ ${fN(f.tars)}</option>`).join('');
   }
 }
@@ -437,7 +485,7 @@ let fpAsign=[{op_id:'',monto:0}];
 function renderFpAsignRows(){
   const wrap=$('fp-asign-rows');
   if(!wrap)return;
-  const opOpts=[...D.operaciones].sort((a,b)=>(b.f_ap||'').localeCompare(a.f_ap||'')).map(o=>`<option value="${o.id}">${o.exp} — ${clienteDeId(o.cli_id)||o.cliente}</option>`).join('');
+  const opOpts=[...D.operaciones].sort((a,b)=>(a.exp||'').localeCompare(b.exp||'','es',{numeric:true,sensitivity:'base'})).map(o=>`<option value="${o.id}">${o.exp} — ${clienteDeId(o.cli_id)||o.cliente}</option>`).join('');
   wrap.innerHTML=fpAsign.map((row,i)=>`
     <div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
       <select class="fc" style="flex:2" onchange="fpAsign[${i}].op_id=parseInt(this.value)||'';updateFpAsignCheck()">
@@ -810,7 +858,7 @@ function rCobs(pg,ac){
     {fecha:x=>x.c.fc||'',cliente:x=>x.c.cliente||'',monto:x=>x.c.mars||0}
   );
   const sinVincular=D.cobranzas.filter(c=>!opIdDeCobranza(c)).length;
-  const opOpts=[...D.operaciones].sort((a,b)=>(b.f_ap||'').localeCompare(a.f_ap||'')).map(o=>`<option value="${o.id}">${o.exp} — ${clienteDeId(o.cli_id)||o.cliente}</option>`).join('');
+  const opOpts=[...D.operaciones].sort((a,b)=>(a.exp||'').localeCompare(b.exp||'','es',{numeric:true,sensitivity:'base'})).map(o=>`<option value="${o.id}">${o.exp} — ${clienteDeId(o.cli_id)||o.cliente}</option>`).join('');
   pg.innerHTML=`<div class="card"><div class="ch"><span class="cn">Registro de Cobranzas</span>
       ${sinVincular>0?`<span style="font-size:11px;color:var(--org);font-weight:600">⚠️ ${sinVincular} cobranza(s) sin vincular a un expediente — no suman a la rentabilidad real hasta asignarlas</span>`:''}
     </div><div class="cb">
@@ -1142,7 +1190,7 @@ function rCCPD(){
 
 function rCCCli(pg){
   const cliNames=[...new Set(D.facturas_emit.map(f=>clienteDeId(f.cl_id)||f.cliente))].sort();
-  const opNames=D.operaciones.map(o=>`<option value="${o.exp}">${o.exp} — ${o.cliente}</option>`).join('');
+  const opNames=[...D.operaciones].sort((a,b)=>(a.exp||'').localeCompare(b.exp||'','es',{numeric:true,sensitivity:'base'})).map(o=>`<option value="${o.exp}">${o.exp} — ${clienteDeId(o.cli_id)||o.cliente}</option>`).join('');
   pg.innerHTML=`<div class="card" style="margin-bottom:14px"><div class="ch"><span class="cn">Filtros</span></div><div class="cb">
     <div class="fg">
       <div class="fgrp"><label class="flbl">Cliente</label><select class="fc" id="cccf-cl" onchange="rCCCD()"><option value="">Todos</option>${cliNames.map(n=>`<option value="${n}">${n}</option>`).join('')}</select></div>
@@ -1309,7 +1357,18 @@ function rstCl(r={}){editIdx=r.id?D.clientes.findIndex(x=>x.id===r.id):-1;['razo
 function rstEx(r={}){['exp','pais','f_ap','f_cl','tc','hon_usd','hon_ars','importe_ref','f_cobro_est','notas'].forEach(f=>{const el=$('ex-'+f);if(el)el.value=r[f]||'';});if($('ex-tipo'))$('ex-tipo').value=r.tipo||'Importación Definitiva para Consumo';if($('ex-estado'))$('ex-estado').value=r.estado||'EN TRAMITE';if($('ex-moneda_ref'))$('ex-moneda_ref').value=r.moneda_ref||'USD';oCl('ex-cl',r.cli_id||'');}
 function rstFP(r={}){oPv('fp-pv',r.pv_id||'');oTG('fp-tg',r.tg_id||'');['fe','fv','nro','notas'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||'';});if($('fp-asig'))$('fp-asig').value=r.asig||'ESTRUCTURA';if($('fp-ep'))$('fp-ep').value=r.ep||'PENDIENTE';if($('fp-tc2'))$('fp-tc2').value=r.tipo_comp||r.tc||'Factura A';if($('fp-mes-aplica'))$('fp-mes-aplica').value=r.mes_aplica||(r.fe?r.fe.substring(0,7):'');['n21','n105','n27','n5','n0'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||0;});if($('fp-mon'))$('fp-mon').value=r.mon||'ARS';if($('fp-tc'))$('fp-tc').value=r.tc||lTC();cIVA('fp');onFpAsigChange();}
 function rstFE(r={}){oCl('fe-cl',r.cl_id||'');oOp('fe-op',r.op_id||'',editIdx<0);['fe','fv','nro','concepto','notas'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||'';});if($('fe-ec'))$('fe-ec').value=r.ec||'PENDIENTE';if($('fe-tc2'))$('fe-tc2').value=r.tipo_comp||r.tc||'Factura A';['n21','n27','n105','n5','n0'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||0;});if($('fe-reint'))$('fe-reint').value=r.reint||0;if($('fe-mon'))$('fe-mon').value=r.mon||'USD';if($('fe-tc'))$('fe-tc').value=r.tc_v||r.tc||lTC();cIVA('fe');}
-function rstPg(r={}){oFP('pg-fac',r.fac_id||'',!r.id);oPv('pg-pv',r.pv_id||'');if($('pg-fp'))$('pg-fp').value=r.fp||'';if($('pg-forma')){$('pg-forma').value=r.forma||'Transferencia Bancaria';tgChq('pg');}['banco','ref','f_ac','obs'].forEach(f=>{const el=$('pg-'+f);if(el)el.value=r[f]||'';});if($('pg-mars'))$('pg-mars').value=r.mars||0;if($('pg-musd'))$('pg-musd').value=r.musd||0;if($('pg-mon'))$('pg-mon').value=r.mon||'ARS';['chqb','chqn','chqf'].forEach(f=>{const el=$('pg-'+f);if(el)el.value=r[f]||'';});}
+function rstPg(r={}){
+  oPv('pg-pv',r.pv_id||'');
+  pgSelFacs=r.fac_id?[r.fac_id]:[];
+  renderPgFacList(r.pv_id||0,r.fac_id||null);
+  if($('pg-fp'))$('pg-fp').value=r.fp||'';
+  if($('pg-forma')){$('pg-forma').value=r.forma||'Transferencia Bancaria';tgChq('pg');}
+  ['banco','ref','f_ac','obs'].forEach(f=>{const el=$('pg-'+f);if(el)el.value=r[f]||'';});
+  if($('pg-mars'))$('pg-mars').value=r.mars||0;
+  if($('pg-musd'))$('pg-musd').value=r.musd||0;
+  if($('pg-mon'))$('pg-mon').value=r.mon||'ARS';
+  ['chqb','chqn','chqf'].forEach(f=>{const el=$('pg-'+f);if(el)el.value=r[f]||'';});
+}
 function rstCb(r={}){oOp('cb-op',r.op_id||'');oFE('cb-fac',r.fac_id||'',!r.id);oCl('cb-cl',r.cl_id||'');if($('cb-fc'))$('cb-fc').value=r.fc||'';if($('cb-forma')){$('cb-forma').value=r.forma||'Transferencia Bancaria';tgChq('cb');}['banco','ref','f_ac','obs'].forEach(f=>{const el=$('cb-'+f);if(el)el.value=r[f]||'';});if($('cb-mars'))$('cb-mars').value=r.mars||0;if($('cb-musd'))$('cb-musd').value=r.musd||0;if($('cb-mon'))$('cb-mon').value=r.mon||'ARS';['chqb','chqn','chqf'].forEach(f=>{const el=$('cb-'+f);if(el)el.value=r[f]||'';});}
 
 // ═══ SAVE RECORDS ════════════════════════════
@@ -1423,7 +1482,7 @@ async function gFP(){
   const ok=await save('facturas_prov',datos,isEdit);if(!ok)return;
   editIdx=-1;cM('m-fp');
   if(ep==='PAGADA'&&confirm('Factura guardada como PAGADA.\n\n¿Registrás el pago ahora?')){
-    setTimeout(()=>{editIdx=-1;oM('m-pg');oFP('pg-fac',datos.id,false);oPv('pg-pv',pvId);if($('pg-mars'))$('pg-mars').value=tars.toFixed(2);if($('pg-musd'))$('pg-musd').value=tusd.toFixed(2);if($('pg-mon'))$('pg-mon').value=mon;},300);
+    setTimeout(()=>{editIdx=-1;oM('m-pg',{pv_id:pvId,fac_id:datos.id});},300);
   }else{toast('Factura guardada ✓');}
   render('fprov');
 }
@@ -1450,13 +1509,50 @@ async function gFE(){
 }
 async function gPg(){
   const fp=v('pg-fp');if(!fp){toast('La fecha es obligatoria','er');return;}
-  const facId=parseInt(v('pg-fac'))||0;const pvId=parseInt(v('pg-pv'))||0;
-  const fac=D.facturas_prov.find(f=>f.id===facId)||{};const pv=D.proveedores.find(p=>p.id===pvId)||{};
+  const pvId=parseInt(v('pg-pv'))||0;
+  if(!pvId){toast('Seleccioná un proveedor','er');return;}
+  const pv=D.proveedores.find(p=>p.id===pvId)||{};
   const isEdit=editIdx>=0;
-  const rec={id:isEdit?D.pagos[editIdx].id:nid(D.pagos),fp,fac_id:facId||null,nro_f:fac.nro||'',pv_id:pvId||null,prov:pv.razon||'',forma:v('pg-forma')||'',banco:v('pg-banco')||'',ref:v('pg-ref')||'',f_ac:v('pg-f_ac')||null,mars:parseFloat(v('pg-mars'))||0,musd:parseFloat(v('pg-musd'))||0,mon:v('pg-mon')||'ARS',chqb:v('pg-chqb')||'',chqn:v('pg-chqn')||'',chqf:v('pg-chqf')||'',obs:v('pg-obs')||''};
-  const okPg=await save('pagos',rec,isEdit);if(!okPg)return;
-  if(facId){await sb.from('facturas_prov').update({ep:'PAGADA'}).eq('id',facId);await loadT('facturas_prov');}
-  editIdx=-1;cM('m-pg');toast('Pago registrado ✓');render('pagos');
+
+  const forma=v('pg-forma')||'',banco=v('pg-banco')||'',ref=v('pg-ref')||'',f_ac=v('pg-f_ac')||null,mon=v('pg-mon')||'ARS',
+        chqb=v('pg-chqb')||'',chqn=v('pg-chqn')||'',chqf=v('pg-chqf')||null,obs=v('pg-obs')||'';
+
+  const facsSel=pgSelFacs.map(id=>D.facturas_prov.find(f=>f.id===id)).filter(Boolean);
+
+  if(isEdit){
+    // Edición: se mantiene como un solo registro (el que se está editando)
+    const fac=facsSel[0]||{};
+    const rec={id:D.pagos[editIdx].id,fp,fac_id:fac.id||null,nro_f:fac.nro||'',pv_id:pvId,prov:pv.razon||'',forma,banco,ref,f_ac,mars:parseFloat(v('pg-mars'))||0,musd:parseFloat(v('pg-musd'))||0,mon,chqb,chqn,chqf,obs};
+    const okPg=await save('pagos',rec,true);if(!okPg)return;
+    if(fac.id){await sb.from('facturas_prov').update({ep:'PAGADA'}).eq('id',fac.id);await loadT('facturas_prov');}
+    editIdx=-1;cM('m-pg');toast('Pago actualizado ✓');render('pagos');
+    return;
+  }
+
+  // Nuevo pago
+  if(!facsSel.length){toast('Seleccioná al menos una factura a pagar','er');return;}
+
+  if(facsSel.length===1){
+    // Una sola factura: respeta el monto que haya editado el usuario (permite pagos parciales)
+    const fac=facsSel[0];
+    const rec={fp,fac_id:fac.id,nro_f:fac.nro||'',pv_id:pvId,prov:pv.razon||'',forma,banco,ref,f_ac,mars:parseFloat(v('pg-mars'))||0,musd:parseFloat(v('pg-musd'))||0,mon,chqb,chqn,chqf,obs};
+    const ok=await save('pagos',rec,false);if(!ok)return;
+    await sb.from('facturas_prov').update({ep:'PAGADA'}).eq('id',fac.id);
+    await loadT('facturas_prov');
+    cM('m-pg');toast('Pago registrado ✓');render('pagos');
+    return;
+  }
+
+  // Varias facturas: se crea un pago por cada una, con el monto real de cada factura
+  for(const fac of facsSel){
+    const rec={fp,fac_id:fac.id,nro_f:fac.nro||'',pv_id:pvId,prov:pv.razon||'',forma,banco,ref,f_ac,mars:(fac.tars||0),musd:(fac.tusd||0),mon,chqb,chqn,chqf,obs};
+    await save('pagos',rec,false);
+    await sb.from('facturas_prov').update({ep:'PAGADA'}).eq('id',fac.id);
+  }
+  await loadT('facturas_prov');
+  cM('m-pg');
+  toast('✅ '+facsSel.length+' pagos registrados para '+(pv.razon||'el proveedor'));
+  render('pagos');
 }
 async function gCb(){
   const fc=v('cb-fc');if(!fc){toast('La fecha es obligatoria','er');return;}
@@ -2152,8 +2248,8 @@ function mostrarPreviewFactura(d, fileName){
 
   // Proveedor: ¿existe o es nuevo?
   const pvMatch = d.proveedor_match_id ? D.proveedores.find(p=>p.id===d.proveedor_match_id) : null;
-  const pvOpts = D.proveedores.map(p=>`<option value="${p.id}" ${p.id===d.proveedor_match_id?'selected':''}>${p.razon}</option>`).join('');
-  const tgOpts = D.tipos_gasto.map(t=>`<option value="${t.id}" ${t.id===d.tg_id_sugerido?'selected':''}>${t.nom}</option>`).join('');
+  const pvOpts = [...D.proveedores].sort((a,b)=>(a.razon||'').localeCompare(b.razon||'','es',{sensitivity:'base'})).map(p=>`<option value="${p.id}" ${p.id===d.proveedor_match_id?'selected':''}>${p.razon}</option>`).join('');
+  const tgOpts = [...D.tipos_gasto].sort((a,b)=>(a.nom||'').localeCompare(b.nom||'','es',{sensitivity:'base'})).map(t=>`<option value="${t.id}" ${t.id===d.tg_id_sugerido?'selected':''}>${t.nom}</option>`).join('');
 
   const confianzaColor = d.confianza==='alta'?'var(--gn)':d.confianza==='media'?'var(--org)':'var(--rd)';
   const dudososHTML = d.campos_dudosos?.length
@@ -2535,8 +2631,12 @@ function clearPdf(){
   <div class="mh"><span class="mt">Registrar Pago</span><button class="xb" onclick="cM('m-pg')">×</button></div>
   <div class="mb"><div class="fg">
     <div class="fgrp"><label class="flbl">Fecha de Pago *</label><input type="date" class="fc" id="pg-fp"></div>
-    <div class="fgrp"><label class="flbl">Factura (solo impagas)</label><select class="fc" id="pg-fac" onchange="afFacPg('pg-fac')"></select></div>
-    <div class="fgrp"><label class="flbl">Proveedor</label><select class="fc" id="pg-pv"></select></div>
+    <div class="fgrp"><label class="flbl">Proveedor *</label><select class="fc" id="pg-pv" onchange="onPgPvChange()"></select></div>
+    <div class="fgrp fsp">
+      <label class="flbl">Facturas Pendientes a Pagar (podés elegir varias)</label>
+      <div id="pg-fac-list" style="max-height:190px;overflow-y:auto;background:var(--s2);border-radius:6px;padding:6px"></div>
+      <div id="pg-fac-total" style="font-size:11px;margin-top:6px"></div>
+    </div>
     <div class="fgrp"><label class="flbl">Forma de Pago</label>
       <select class="fc" id="pg-forma" onchange="tgChq('pg')">
         <option>Transferencia Bancaria</option><option>Cheque Propio</option><option>Cheque Terceros</option>
@@ -2545,8 +2645,8 @@ function clearPdf(){
     <div class="fgrp"><label class="flbl">Banco Emisor</label><input class="fc" id="pg-banco" placeholder="Banco Galicia"></div>
     <div class="fgrp"><label class="flbl">Nro. Referencia</label><input class="fc" id="pg-ref" placeholder="TRF-001"></div>
     <div class="fgrp"><label class="flbl">Fecha Acreditación</label><input type="date" class="fc" id="pg-f_ac"></div>
-    <div class="fgrp"><label class="flbl">Monto ARS</label><input type="number" class="fc" id="pg-mars" placeholder="0"></div>
-    <div class="fgrp"><label class="flbl">Monto USD</label><input type="number" class="fc" id="pg-musd" placeholder="0"></div>
+    <div class="fgrp"><label class="flbl">Monto ARS (total / editable si es 1 factura)</label><input type="number" class="fc" id="pg-mars" placeholder="0"></div>
+    <div class="fgrp"><label class="flbl">Monto USD (total / editable si es 1 factura)</label><input type="number" class="fc" id="pg-musd" placeholder="0"></div>
     <div class="fgrp"><label class="flbl">Moneda Principal</label><select class="fc" id="pg-mon"><option>ARS</option><option>USD</option></select></div>
     <div class="cbox" id="pg-cbox">
       <div class="cboxt">DATOS DEL CHEQUE</div>
