@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -691,12 +690,23 @@ function rExps(pg,ac){
       ?`<span class="tdc" style="color:var(--gn);font-weight:700">$ ${fN(real)}</span>`
       :`<span style="color:var(--tx3);font-size:11px">—</span>`;
 
+    // Arribo: si está confirmado se muestra en verde y prevalece sobre la estimada
+    let arriboCell;
+    if(o.f_arribo_conf){
+      arriboCell=`<span style="color:var(--gn);font-weight:700;font-size:11px">✅ ${fF(o.f_arribo_conf)}</span>`;
+    }else if(o.f_arribo_est){
+      arriboCell=`<span style="color:var(--org);font-size:11px">📅 ${fF(o.f_arribo_est)}</span> <button class="btn bgrn bs" style="padding:2px 6px;font-size:10px" onclick="confirmarArribo(${i})" title="Confirmar arribo">✓</button>`;
+    }else{
+      arriboCell=`<span style="color:var(--tx3);font-size:11px">—</span>`;
+    }
+
     return[
       `<span style="color:var(--acc);cursor:pointer;font-weight:600" onclick="vExp(${i})" title="Ver detalle">${o.exp} 🔍</span>`,
       `<span class="tdm">${clienteDisplay}</span>`,
       `<span style="font-size:11px">${(o.merc||'').substring(0,25)}${(o.merc||'').length>25?'...':''}</span>`,
       fF(o.f_ap),
       eB(o.estado),
+      arriboCell,
       esperadaCell,
       realCell,
       cobCell,
@@ -706,15 +716,35 @@ function rExps(pg,ac){
   try {
     pg.innerHTML=`<div class="card"><div class="ch">
       <span class="cn">Expedientes de Importación</span>
-      <span style="font-size:11px;color:var(--tx3)">Base = Honorario del presupuesto (fijo) · Real = Cobrado − Gastos</span>
+      <span style="font-size:11px;color:var(--tx3)">Base = Honorario del presupuesto (fijo) · Real = Cobrado − Gastos · ✅ Arribo confirmado / 📅 Estimado</span>
     </div><div class="cb">
       ${fbar('exps',[{k:'fecha',l:'Fecha apertura'},{k:'exp',l:'Expediente'},{k:'cliente',l:'Cliente'},{k:'estado',l:'Estado'}],'Buscar expediente, cliente, mercadería...')}
-      ${tbl(['Expediente','Cliente','Mercadería','Apertura','Estado','Rent. Base','Rent. Real','Cobrado','Acciones'],rows)}
+      ${tbl(['Expediente','Cliente','Mercadería','Apertura','Estado','Arribo','Rent. Base','Rent. Real','Cobrado','Acciones'],rows)}
     </div></div>`;
   } catch(e) {
     pg.innerHTML=`<div class="card"><div class="cb"><div class="al alw">Error al cargar expedientes: ${e.message}</div></div></div>`;
     console.error('rExps error:',e);
   }
+}
+async function confirmarArribo(i){
+  const o=D.operaciones[i];
+  if(!o)return;
+  const fecha=prompt('Fecha de arribo confirmada (AAAA-MM-DD):',new Date().toISOString().slice(0,10));
+  if(!fecha)return;
+  const ok=await save('operaciones',{id:o.id,f_arribo_conf:fecha},true);
+  if(!ok)return;
+  toast('✅ Arribo confirmado: '+fF(fecha));
+  render('exps');
+}
+async function confirmarArriboDetalle(idx){
+  const o=D.operaciones[idx];
+  if(!o)return;
+  const fecha=prompt('Fecha de arribo confirmada (AAAA-MM-DD):',new Date().toISOString().slice(0,10));
+  if(!fecha)return;
+  const ok=await save('operaciones',{id:o.id,f_arribo_conf:fecha},true);
+  if(!ok)return;
+  toast('✅ Arribo confirmado: '+fF(fecha));
+  vExp(idx);
 }
 
 function vExp(idx){
@@ -740,6 +770,17 @@ function vExp(idx){
     h+=`<div style="background:var(--s2);border-radius:6px;padding:8px"><div style="font-size:9px;color:var(--tx3);text-transform:uppercase">${l}</div><div style="font-weight:600;margin-top:2px;font-size:12px">${val}</div></div>`;
   });
   h+=`</div><div style="background:var(--s2);border-radius:6px;padding:8px;margin-bottom:12px;font-size:11px"><b>Mercadería:</b> ${o.merc} | <b>Tipo:</b> ${o.tipo}</div>`;
+
+  // ── ARRIBO DE LA CARGA — bien visible ──
+  const arriboConf=!!o.f_arribo_conf;
+  h+=`<div style="background:${arriboConf?'rgba(34,197,94,.08)':'rgba(245,158,11,.06)'};border:1px solid ${arriboConf?'rgba(34,197,94,.25)':'rgba(245,158,11,.25)'};border-radius:8px;padding:12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+    <div>
+      <div style="font-weight:700;font-size:12px;color:${arriboConf?'var(--gn)':'var(--org)'}">🚢 ${arriboConf?'ARRIBO CONFIRMADO':'ARRIBO ESTIMADO'}</div>
+      <div style="font-size:18px;font-weight:700;margin-top:4px;color:${arriboConf?'var(--gn)':'var(--org)'}">${arriboConf?fF(o.f_arribo_conf):(o.f_arribo_est?fF(o.f_arribo_est):'Sin fecha cargada')}</div>
+      ${arriboConf&&o.f_arribo_est?`<div style="font-size:10px;color:var(--tx3);margin-top:2px">Estimada originalmente: ${fF(o.f_arribo_est)}</div>`:''}
+    </div>
+    ${!arriboConf&&o.f_arribo_est?`<button class="btn bgrn" onclick="confirmarArriboDetalle(${idx})">✓ Confirmar Arribo</button>`:''}
+  </div>`;
 
   h+=`<div style="background:${rbg};border:1px solid ${rbr};border-radius:8px;padding:12px;margin-bottom:12px">
     <div style="font-weight:700;font-size:12px;margin-bottom:8px;color:${rc}">RESUMEN DE RENTABILIDAD ${cobrado<=0?'(aún sin cobros — se muestra la base de referencia)':''}</div>
@@ -1354,7 +1395,7 @@ function edit(tabla,idx){
 // ═══ FORM RESET HELPERS ═══════════════════════
 function rstPv(r={}){editIdx=r.id?D.proveedores.findIndex(x=>x.id===r.id):-1;['razon','cuit','iva','tel','email','cpago','moneda','activo','notas'].forEach(f=>{const el=$('pv-'+f);if(el)el.value=r[f]||'';});oTG('pv-tg',r.tg_id||'');if(r.iva&&$('pv-iva'))$('pv-iva').value=r.iva;if(r.activo&&$('pv-activo'))$('pv-activo').value=r.activo;if(r.moneda&&$('pv-moneda'))$('pv-moneda').value=r.moneda;}
 function rstCl(r={}){editIdx=r.id?D.clientes.findIndex(x=>x.id===r.id):-1;['razon','cuit','iva','contacto','tel','email','rubro','cpago','moneda','activo','notas'].forEach(f=>{const el=$('cl-'+f);if(el)el.value=r[f]||'';});if(r.iva&&$('cl-iva'))$('cl-iva').value=r.iva;if(r.activo&&$('cl-activo'))$('cl-activo').value=r.activo;if(r.moneda&&$('cl-moneda'))$('cl-moneda').value=r.moneda;}
-function rstEx(r={}){['exp','pais','f_ap','f_cl','tc','hon_usd','hon_ars','importe_ref','f_cobro_est','notas'].forEach(f=>{const el=$('ex-'+f);if(el)el.value=r[f]||'';});if($('ex-tipo'))$('ex-tipo').value=r.tipo||'Importación Definitiva para Consumo';if($('ex-estado'))$('ex-estado').value=r.estado||'EN TRAMITE';if($('ex-moneda_ref'))$('ex-moneda_ref').value=r.moneda_ref||'USD';oCl('ex-cl',r.cli_id||'');}
+function rstEx(r={}){['exp','pais','f_ap','f_cl','tc','hon_usd','hon_ars','importe_ref','f_cobro_est','f_arribo_est','f_arribo_conf','notas'].forEach(f=>{const el=$('ex-'+f);if(el)el.value=r[f]||'';});if($('ex-tipo'))$('ex-tipo').value=r.tipo||'Importación Definitiva para Consumo';if($('ex-estado'))$('ex-estado').value=r.estado||'EN TRAMITE';if($('ex-moneda_ref'))$('ex-moneda_ref').value=r.moneda_ref||'USD';oCl('ex-cl',r.cli_id||'');}
 function rstFP(r={}){oPv('fp-pv',r.pv_id||'');oTG('fp-tg',r.tg_id||'');['fe','fv','nro','notas'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||'';});if($('fp-asig'))$('fp-asig').value=r.asig||'ESTRUCTURA';if($('fp-ep'))$('fp-ep').value=r.ep||'PENDIENTE';if($('fp-tc2'))$('fp-tc2').value=r.tipo_comp||r.tc||'Factura A';if($('fp-mes-aplica'))$('fp-mes-aplica').value=r.mes_aplica||(r.fe?r.fe.substring(0,7):'');['n21','n105','n27','n5','n0'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||0;});if($('fp-mon'))$('fp-mon').value=r.mon||'ARS';if($('fp-tc'))$('fp-tc').value=r.tc||lTC();cIVA('fp');onFpAsigChange();}
 function rstFE(r={}){oCl('fe-cl',r.cl_id||'');oOp('fe-op',r.op_id||'',editIdx<0);['fe','fv','nro','concepto','notas'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||'';});if($('fe-ec'))$('fe-ec').value=r.ec||'PENDIENTE';if($('fe-tc2'))$('fe-tc2').value=r.tipo_comp||r.tc||'Factura A';['n21','n27','n105','n5','n0'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||0;});if($('fe-reint'))$('fe-reint').value=r.reint||0;if($('fe-mon'))$('fe-mon').value=r.mon||'USD';if($('fe-tc'))$('fe-tc').value=r.tc_v||r.tc||lTC();cIVA('fe');}
 function rstPg(r={}){
@@ -1418,7 +1459,7 @@ async function gEx(){
   const exp=v('ex-exp').trim();if(!exp){toast('Nro. Expediente es obligatorio','er');return;}
   const cliId=parseInt(v('ex-cl'))||0;const cli=D.clientes.find(c=>c.id===cliId)||{};
   const isEdit=editIdx>=0;
-  const rec={id:isEdit?D.operaciones[editIdx].id:nid(D.operaciones),exp,cli_id:cliId,cliente:cli.razon||'',merc:v('ex-merc')||'',pais:v('ex-pais')||'',tipo:v('ex-tipo')||'',f_ap:v('ex-f_ap')||null,f_cl:v('ex-f_cl')||null,estado:v('ex-estado')||'EN TRAMITE',tc:parseFloat(v('ex-tc'))||lTC(),hon_usd:parseFloat(v('ex-hon_usd'))||0,hon_ars:parseFloat(v('ex-hon_ars'))||0,importe_ref:parseFloat(v('ex-importe_ref'))||0,moneda_ref:v('ex-moneda_ref')||'USD',f_cobro_est:v('ex-f_cobro_est')||null,notas:v('ex-notas')||''};
+  const rec={id:isEdit?D.operaciones[editIdx].id:nid(D.operaciones),exp,cli_id:cliId,cliente:cli.razon||'',merc:v('ex-merc')||'',pais:v('ex-pais')||'',tipo:v('ex-tipo')||'',f_ap:v('ex-f_ap')||null,f_cl:v('ex-f_cl')||null,estado:v('ex-estado')||'EN TRAMITE',tc:parseFloat(v('ex-tc'))||lTC(),hon_usd:parseFloat(v('ex-hon_usd'))||0,hon_ars:parseFloat(v('ex-hon_ars'))||0,importe_ref:parseFloat(v('ex-importe_ref'))||0,moneda_ref:v('ex-moneda_ref')||'USD',f_cobro_est:v('ex-f_cobro_est')||null,f_arribo_est:v('ex-f_arribo_est')||null,f_arribo_conf:v('ex-f_arribo_conf')||null,notas:v('ex-notas')||''};
   const ok=await save('operaciones',rec,isEdit);if(!ok)return;
 
   // Cascada: si cambió el exp o el cliente, actualizar referencias en facturas
@@ -2522,6 +2563,14 @@ function clearPdf(){
     <div class="fgrp"><label class="flbl">TC Utilizado</label><input type="number" class="fc" id="ex-tc" placeholder="1090"></div>
     <div class="fgrp"><label class="flbl">Honorarios USD</label><input type="number" class="fc" id="ex-hon_usd" placeholder="0"></div>
     <div class="fgrp"><label class="flbl">Honorarios ARS</label><input type="number" class="fc" id="ex-hon_ars" placeholder="0"></div>
+    <div class="fgrp" style="grid-column:1/-1;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:7px;padding:11px">
+      <div style="font-size:10px;color:var(--org);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🚢 Arribo de la Carga</div>
+      <div class="fg" style="gap:9px">
+        <div class="fgrp"><label class="flbl">Fecha Estimada de Arribo</label><input type="date" class="fc" id="ex-f_arribo_est"></div>
+        <div class="fgrp"><label class="flbl">Fecha Confirmada de Arribo</label><input type="date" class="fc" id="ex-f_arribo_conf"></div>
+      </div>
+      <small style="color:var(--tx3);display:block;margin-top:6px">Cargá la fecha confirmada apenas la carga arribe efectivamente. Mientras esté vacía, se muestra la estimada.</small>
+    </div>
     <div class="fgrp" style="grid-column:1/-1;background:rgba(79,156,249,.06);border:1px solid rgba(79,156,249,.2);border-radius:7px;padding:11px">
       <div style="font-size:10px;color:var(--acc);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Referencia de Facturación</div>
       <div class="fg" style="gap:9px">
