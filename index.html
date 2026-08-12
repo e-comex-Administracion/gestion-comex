@@ -440,7 +440,7 @@ function updatePgFacTotal(){
   if($('pg-mars'))$('pg-mars').value=totalArs?totalArs.toFixed(2):'';
   if($('pg-musd'))$('pg-musd').value=totalUsd?totalUsd.toFixed(2):'';
   const el=$('pg-fac-total');
-  if(el)el.innerHTML=facs.length?`<span style="color:var(--gn);font-weight:600">✓ ${facs.length} factura(s) seleccionada(s) · Total: $ ${fN(totalArs)}</span>`:'<span style="color:var(--tx3)">Sin facturas seleccionadas</span>';
+  if(el)el.innerHTML=facs.length?`<span style="color:var(--grn);font-weight:600">✓ ${facs.length} factura(s) seleccionada(s) · Total: $ ${fN(totalArs)}</span>`:'<span style="color:var(--tx3)">Sin facturas seleccionadas</span>';
 }
 function afFacCb(facId){const f=D.facturas_emit.find(x=>x.id==facId);if(!f)return;if($('cb-cl'))$('cb-cl').value=f.cl_id||'';if($('cb-mars'))$('cb-mars').value=f.tars||0;if($('cb-musd'))$('cb-musd').value=f.tusd||0;if($('cb-mon'))$('cb-mon').value=f.mon||'ARS';}
 function afOpCb(){
@@ -539,7 +539,7 @@ function updateFpAsignCheck(){
   const diff=total-asignado;
   if(total<=0){el.innerHTML='';return;}
   if(Math.abs(diff)<0.5){
-    el.innerHTML=`<span style="color:var(--gn)">✓ Asignado: $ ${fN(asignado)} / $ ${fN(total)}</span>`;
+    el.innerHTML=`<span style="color:var(--grn)">✓ Asignado: $ ${fN(asignado)} / $ ${fN(total)}</span>`;
   }else{
     el.innerHTML=`<span style="color:var(--org)">⚠️ Asignado: $ ${fN(asignado)} / $ ${fN(total)} (diferencia: $ ${fN(Math.abs(diff))})</span>`;
   }
@@ -614,8 +614,8 @@ function rDash(pg){
       `<span style="font-size:12px">${clienteDeId(o.cli_id)||o.cliente}</span>`,
       eB(o.estado),
       `<span class="tdc" style="color:var(--tx2)">$ ${fN(esperada)}</span>`,
-      cobrado>0?`<span class="tdc" style="color:var(--gn);font-weight:700">$ ${fN(real)}</span>`:`<span style="color:var(--tx3);font-size:11px">—</span>`,
-      `<span class="tdc" style="color:${cobrado>0?'var(--gn)':'var(--tx3)'};font-weight:${cobrado>0?'700':'400'}">$ ${fN(cobrado)}</span>`,
+      cobrado>0?`<span class="tdc" style="color:${real>=0?'var(--grn)':'var(--red)'};font-weight:700">$ ${fN(real)}</span>`:`<span style="color:var(--tx3);font-size:11px">—</span>`,
+      `<span class="tdc" style="color:${cobrado>0?'var(--grn)':'var(--tx3)'};font-weight:${cobrado>0?'700':'400'}">$ ${fN(cobrado)}</span>`,
     ];
   });
 
@@ -633,10 +633,10 @@ function rDash(pg){
   alertas.sort((a,b)=>a.dias-b.dias);
 
   const alertHTML=alertas.length
-    ?alertas.map(a=>`<div style="display:flex;align-items:center;gap:8px;padding:8px;background:${a.dias<=3?'rgba(239,68,68,.08)':'rgba(245,158,11,.06)'};border-left:3px solid ${a.dias<=3?'var(--rd)':'var(--org)'};border-radius:4px;margin-bottom:6px">
+    ?alertas.map(a=>`<div style="display:flex;align-items:center;gap:8px;padding:8px;background:${a.dias<=3?'rgba(239,68,68,.08)':'rgba(245,158,11,.06)'};border-left:3px solid ${a.dias<=3?'var(--red)':'var(--org)'};border-radius:4px;margin-bottom:6px">
         <span style="font-size:16px">${a.tipo==='pago'?'💸':'💰'}</span>
         <div style="flex:1;font-size:12px"><div style="font-weight:600">${a.txt}</div><div style="color:var(--tx3);font-size:11px">${a.tipo==='pago'?'Pago':'Cobro'} · $ ${fN(a.monto)}</div></div>
-        <span style="font-weight:700;font-size:12px;color:${a.dias<=0?'var(--rd)':a.dias<=3?'var(--rd)':'var(--org)'}">${a.dias<=0?'VENCIDA':a.dias===0?'HOY':a.dias+'d'}</span>
+        <span style="font-weight:700;font-size:12px;color:${a.dias<=0?'var(--red)':a.dias<=3?'var(--red)':'var(--org)'}">${a.dias<=0?'VENCIDA':a.dias===0?'HOY':a.dias+'d'}</span>
       </div>`).join('')
     :`<div style="text-align:center;color:var(--tx3);padding:16px;font-size:12px">✅ Sin vencimientos próximos</div>`;
 
@@ -661,7 +661,7 @@ function rDash(pg){
     <div class="card"><div class="ch"><span class="cn">💸 Fact. Proveedores Pendientes de Pago</span></div><div class="cb">
       ${tbl(['Proveedor','Vence','Total','Expediente'],pp.slice(0,8).map(f=>[
         `<span class="tdm">${provDeId(f.pv_id)||f.prov}</span>`,
-        `<span class="tdc" style="color:${f.fv&&new Date(f.fv)<hoy?'var(--rd)':'var(--tx)'}">${fF(f.fv)}</span>`,
+        `<span class="tdc" style="color:${f.fv&&new Date(f.fv)<hoy?'var(--red)':'var(--tx)'}">${fF(f.fv)}</span>`,
         `<span class="tdc rn">$ ${fN(f.tars)}</span>`,
         (expDeId(f.op_id)||f.op)?`<span style="font-size:11px;color:var(--acc)">${expDeId(f.op_id)||f.op}</span>`:`<span style="color:var(--tx3);font-size:11px">Estructura</span>`
       ]),'Sin facturas pendientes')}</div>
@@ -683,17 +683,17 @@ function rExps(pg,ac){
     const esperada=rentExpEsperada(o);
     const real=rentExpReal(o);
 
-    const cobCell=`<span class="tdc" style="color:${cobrado>0?'var(--gn)':'var(--tx3)'};font-weight:${cobrado>0?'700':'400'}">$ ${fN(cobrado)}</span>`;
+    const cobCell=`<span class="tdc" style="color:${cobrado>0?'var(--grn)':'var(--tx3)'};font-weight:${cobrado>0?'700':'400'}">$ ${fN(cobrado)}</span>`;
 
     const esperadaCell=`<span class="tdc" style="color:var(--tx2)">$ ${fN(esperada)}</span>`;
     const realCell=cobrado>0
-      ?`<span class="tdc" style="color:var(--gn);font-weight:700">$ ${fN(real)}</span>`
+      ?`<span class="tdc" style="color:${real>=0?'var(--grn)':'var(--red)'};font-weight:700">$ ${fN(real)}</span>`
       :`<span style="color:var(--tx3);font-size:11px">—</span>`;
 
     // Arribo: si está confirmado se muestra en verde y prevalece sobre la estimada
     let arriboCell;
     if(o.f_arribo_conf){
-      arriboCell=`<span style="color:var(--gn);font-weight:700;font-size:11px">✅ ${fF(o.f_arribo_conf)}</span>`;
+      arriboCell=`<span style="color:var(--grn);font-weight:700;font-size:11px">✅ ${fF(o.f_arribo_conf)}</span>`;
     }else if(o.f_arribo_est){
       arriboCell=`<span style="color:var(--org);font-size:11px">📅 ${fF(o.f_arribo_est)}</span> <button class="btn bgrn bs" style="padding:2px 6px;font-size:10px" onclick="confirmarArribo(${i})" title="Confirmar arribo">✓</button>`;
     }else{
@@ -710,7 +710,7 @@ function rExps(pg,ac){
       esperadaCell,
       realCell,
       cobCell,
-      ac2('operaciones',i)
+      ac2('operaciones',i)+`<button class="btn bg2 bs" onclick="xCierreOp(${i})" title="Exportar Cierre de Operación (Excel)">📊</button>`
     ];
   });
   try {
@@ -775,8 +775,8 @@ function vExp(idx){
   const arriboConf=!!o.f_arribo_conf;
   h+=`<div style="background:${arriboConf?'rgba(34,197,94,.08)':'rgba(245,158,11,.06)'};border:1px solid ${arriboConf?'rgba(34,197,94,.25)':'rgba(245,158,11,.25)'};border-radius:8px;padding:12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
     <div>
-      <div style="font-weight:700;font-size:12px;color:${arriboConf?'var(--gn)':'var(--org)'}">🚢 ${arriboConf?'ARRIBO CONFIRMADO':'ARRIBO ESTIMADO'}</div>
-      <div style="font-size:18px;font-weight:700;margin-top:4px;color:${arriboConf?'var(--gn)':'var(--org)'}">${arriboConf?fF(o.f_arribo_conf):(o.f_arribo_est?fF(o.f_arribo_est):'Sin fecha cargada')}</div>
+      <div style="font-weight:700;font-size:12px;color:${arriboConf?'var(--grn)':'var(--org)'}">🚢 ${arriboConf?'ARRIBO CONFIRMADO':'ARRIBO ESTIMADO'}</div>
+      <div style="font-size:18px;font-weight:700;margin-top:4px;color:${arriboConf?'var(--grn)':'var(--org)'}">${arriboConf?fF(o.f_arribo_conf):(o.f_arribo_est?fF(o.f_arribo_est):'Sin fecha cargada')}</div>
       ${arriboConf&&o.f_arribo_est?`<div style="font-size:10px;color:var(--tx3);margin-top:2px">Estimada originalmente: ${fF(o.f_arribo_est)}</div>`:''}
     </div>
     ${!arriboConf&&o.f_arribo_est?`<button class="btn bgrn" onclick="confirmarArriboDetalle(${idx})">✓ Confirmar Arribo</button>`:''}
@@ -830,6 +830,7 @@ function vExp(idx){
     </tbody></table></div>`;}
   $('m-exp-body').innerHTML=h;
   $('m-exp-title').textContent=o.exp+' — '+(clienteDeId(o.cli_id)||o.cliente);
+  if($('m-exp-xbtn'))$('m-exp-xbtn').setAttribute('onclick','xCierreOp('+idx+')');
   $('m-exp-det').classList.add('show');
 }
 function abrirCobParaOp(opId){
@@ -1139,10 +1140,10 @@ function rRent(pg){
     const baseCell=`<span class="tdc" style="color:var(--tx2)">$ ${fN(honBase)}</span>`;
     const gastosCell=gastos!==0?`<span class="tdc ${gastos>0?'rn':'rp'}">$ ${fN(gastos)}</span>`:`<span style="color:var(--tx3);font-size:11px">—</span>`;
     const realCell=cobrado>0
-      ?`<span class="tdc rp" style="font-weight:700">$ ${fN(real)}</span>`
+      ?`<span class="tdc" style="color:${real>=0?'var(--grn)':'var(--red)'};font-weight:700">$ ${fN(real)}</span>`
       :`<span style="color:var(--tx3);font-size:11px">—</span>`;
 
-    const cobCell=`<span class="tdc" style="color:${cobrado>0?'var(--gn)':'var(--tx3)'};font-weight:${cobrado>0?'700':'400'}">$ ${fN(cobrado)}</span>`;
+    const cobCell=`<span class="tdc" style="color:${cobrado>0?'var(--grn)':'var(--tx3)'};font-weight:${cobrado>0?'700':'400'}">$ ${fN(cobrado)}</span>`;
 
     return[
       `<span class="tdc">${o.exp}</span>`,
@@ -1335,6 +1336,79 @@ function _xRent(wb){
     }));
 }
 function xTodo(){const wb=XLSX.utils.book_new();_xOps(wb);_xFP(wb);_xFE(wb);_xPg(wb);_xCb(wb);_xPvs(wb);_xCls(wb);_xTC(wb);_xTG(wb);_xRent(wb);XLSX.writeFile(wb,'GestionComex_Completo_'+hoy()+'.xlsx');toast('Exportación completa ✓');}
+
+// ═══ EXPORTAR CIERRE DE OPERACIÓN (Excel prolijo, ingresos vs egresos) ═══
+function xCierreOp(idx){
+  const o=D.operaciones[idx];
+  if(!o){toast('Operación no encontrada','er');return;}
+  const clienteDisplay=clienteDeId(o.cli_id)||o.cliente||'';
+  const arribo=o.f_arribo_conf?(fF(o.f_arribo_conf)+' (confirmado)'):(o.f_arribo_est?(fF(o.f_arribo_est)+' (estimado)'):'Sin fecha cargada');
+
+  // INGRESOS: cobranzas vinculadas a esta operación (directo o vía factura emitida)
+  const ingresos=D.cobranzas.filter(c=>opIdDeCobranza(c)===o.id).map(c=>({
+    fecha:fF(c.fc),
+    detalle:(c.forma||'Cobro')+(c.ref?(' — '+c.ref):'')+(c.nro_a?(' · Fact. '+c.nro_a):''),
+    monto:c.mars||0
+  })).sort((a,b)=>a.fecha.localeCompare(b.fecha));
+
+  // EGRESOS: facturas de proveedor asignadas a esta operación (respeta división entre expedientes y signo ND/NC)
+  const egresos=[];
+  D.facturas_prov.forEach(f=>{
+    const signo=signoFP(f);
+    const etiqNC=esNotaCredito(f)?' (NC)':(f.tipo_comp==='Nota de Débito'?' (ND)':'');
+    if(f.asignaciones&&f.asignaciones.length){
+      f.asignaciones.forEach(a=>{
+        if(a.op_id===o.id){
+          egresos.push({fecha:fF(f.fe),detalle:(provDeId(f.pv_id)||f.prov)+' — '+(f.tg||f.nro||'')+etiqNC,monto:signo*(a.monto||0)});
+        }
+      });
+    }else if(f.op_id===o.id){
+      egresos.push({fecha:fF(f.fe),detalle:(provDeId(f.pv_id)||f.prov)+' — '+(f.tg||f.nro||'')+etiqNC,monto:signo*(f.tars||0)});
+    }
+  });
+  egresos.sort((a,b)=>a.fecha.localeCompare(b.fecha));
+
+  const totalIng=ingresos.reduce((a,x)=>a+x.monto,0);
+  const totalEgr=egresos.reduce((a,x)=>a+x.monto,0);
+  const saldo=totalIng-totalEgr;
+
+  const rows=[];
+  rows.push(['CIERRE DE OPERACIÓN — '+o.exp]);
+  rows.push([]);
+  rows.push(['Expediente:',o.exp,'','Cliente:',clienteDisplay]);
+  rows.push(['Fecha Apertura:',fF(o.f_ap)||'-','','Fecha de Arribo:',arribo]);
+  rows.push(['Estado:',o.estado,'','Honorario Base:','$ '+fN(honBaseOp(o))]);
+  rows.push([]);
+  rows.push(['INGRESOS','','','','EGRESOS']);
+  rows.push(['Fecha','Detalle','Monto ARS','','Fecha','Detalle','Monto ARS']);
+  const maxLen=Math.max(ingresos.length,egresos.length,1);
+  for(let i=0;i<maxLen;i++){
+    const ing=ingresos[i],egr=egresos[i];
+    rows.push([
+      ing?ing.fecha:'',ing?ing.detalle:'',ing?ing.monto:'',
+      '',
+      egr?egr.fecha:'',egr?egr.detalle:'',egr?egr.monto:''
+    ]);
+  }
+  rows.push([]);
+  rows.push(['TOTAL INGRESOS','','TOTAL_ING','','TOTAL EGRESOS','','TOTAL_EGR']);
+  rows.push([]);
+  rows.push(['RESULTADO / SALDO FINAL','','SALDO_FINAL']);
+
+  const idxTot=rows.findIndex(r=>r[0]==='TOTAL INGRESOS');
+  rows[idxTot][2]=totalIng;
+  rows[idxTot][6]=totalEgr;
+  const idxSaldo=rows.findIndex(r=>r[0]==='RESULTADO / SALDO FINAL');
+  rows[idxSaldo][2]=saldo;
+
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=[{wch:22},{wch:34},{wch:15},{wch:3},{wch:22},{wch:34},{wch:15}];
+  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:6}}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Cierre '+o.exp.substring(0,25));
+  XLSX.writeFile(wb,'Cierre_'+o.exp.replace(/[^a-zA-Z0-9-]/g,'_')+'_'+hoy()+'.xlsx');
+  toast('✅ Excel de cierre exportado');
+}
 function xT(tabla){const wb=XLSX.utils.book_new();const m={operaciones:_xOps,facturas_prov:_xFP,facturas_emit:_xFE,pagos:_xPg,cobranzas:_xCb,proveedores:_xPvs,clientes:_xCls};if(m[tabla])m[tabla](wb);XLSX.writeFile(wb,'GestionComex_'+tabla+'_'+hoy()+'.xlsx');toast('Exportado ✓');}
 function xRent(){const wb=XLSX.utils.book_new();_xRent(wb);XLSX.writeFile(wb,'GestionComex_Rentabilidad_'+hoy()+'.xlsx');toast('Rentabilidad exportada ✓');}
 function xCC(tipo){const wb=XLSX.utils.book_new();if(tipo==='prov')_xFP(wb);else _xFE(wb);XLSX.writeFile(wb,'GestionComex_CC_'+tipo+'_'+hoy()+'.xlsx');toast('Exportado ✓');}
@@ -2292,7 +2366,7 @@ function mostrarPreviewFactura(d, fileName){
   const pvOpts = [...D.proveedores].sort((a,b)=>(a.razon||'').localeCompare(b.razon||'','es',{sensitivity:'base'})).map(p=>`<option value="${p.id}" ${p.id===d.proveedor_match_id?'selected':''}>${p.razon}</option>`).join('');
   const tgOpts = [...D.tipos_gasto].sort((a,b)=>(a.nom||'').localeCompare(b.nom||'','es',{sensitivity:'base'})).map(t=>`<option value="${t.id}" ${t.id===d.tg_id_sugerido?'selected':''}>${t.nom}</option>`).join('');
 
-  const confianzaColor = d.confianza==='alta'?'var(--gn)':d.confianza==='media'?'var(--org)':'var(--rd)';
+  const confianzaColor = d.confianza==='alta'?'var(--grn)':d.confianza==='media'?'var(--org)':'var(--red)';
   const dudososHTML = d.campos_dudosos?.length
     ? `<div style="padding:8px 12px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:6px;font-size:12px;margin-bottom:12px">
         ⚠️ Claude no pudo determinar con certeza: <strong>${d.campos_dudosos.join(', ')}</strong>. Revisalos antes de guardar.
@@ -2315,7 +2389,7 @@ function mostrarPreviewFactura(d, fileName){
       </div>
       <div class="fg2">
         <div class="fgrp">
-          <label class="flbl">Proveedor ${pvMatch?'<span style="color:var(--gn)">✓ encontrado</span>':'<span style="color:var(--org)">⚠ no encontrado — se dará de alta</span>'}</label>
+          <label class="flbl">Proveedor ${pvMatch?'<span style="color:var(--grn)">✓ encontrado</span>':'<span style="color:var(--org)">⚠ no encontrado — se dará de alta</span>'}</label>
           <select class="fc" id="pdf-pv-sel" onchange="onPdfPvChange()">
             <option value="">-- Nuevo proveedor --</option>
             ${pvOpts}
@@ -2368,7 +2442,7 @@ function mostrarPreviewFactura(d, fileName){
           <input class="fc" type="number" id="pdf-i21" value="${d.i21||0}">
         </div>
         <div class="fgrp"><label class="flbl">Total ARS</label>
-          <input class="fc" type="number" id="pdf-total" value="${d.total||0}" style="color:var(--rd);font-weight:700">
+          <input class="fc" type="number" id="pdf-total" value="${d.total||0}" style="color:var(--red);font-weight:700">
         </div>
         <div class="fgrp"><label class="flbl">TC (tipo de cambio)</label>
           <input class="fc" type="number" id="pdf-tc" value="${lTC()||0}">
@@ -2505,7 +2579,7 @@ function clearPdf(){
 
 <!-- MODAL DETALLE EXPEDIENTE -->
 <div class="mo" id="m-exp-det"><div class="md" style="max-width:820px">
-  <div class="mh"><span class="mt" id="m-exp-title">Detalle</span><button class="xb" onclick="cM('m-exp-det')">×</button></div>
+  <div class="mh"><span class="mt" id="m-exp-title">Detalle</span><button class="btn bg2 bs" id="m-exp-xbtn" onclick="" style="margin-left:auto;margin-right:8px">📊 Exportar Cierre</button><button class="xb" onclick="cM('m-exp-det')">×</button></div>
   <div class="mb" id="m-exp-body" style="max-height:70vh;overflow-y:auto;padding:14px"></div>
   <div class="mf"><button class="btn bg2" onclick="cM('m-exp-det')">Cerrar</button></div>
 </div></div>
