@@ -674,7 +674,7 @@ function rExps(pg,ac){
   ac.innerHTML=`<button class="btn bp bs" onclick="oM('m-ex')">＋ Nueva Operación</button>`;
   const tcRef=lTC();
   const itemsF=fApply('exps',D.operaciones.map((o,i)=>({o,i})),
-    x=>`${x.o.exp} ${x.o.cliente} ${x.o.merc||''}`,
+    x=>`${x.o.exp} ${x.o.nro_despacho||''} ${x.o.cliente} ${x.o.merc||''}`,
     {fecha:x=>x.o.f_ap||'',exp:x=>x.o.exp||'',cliente:x=>x.o.cliente||'',estado:x=>x.o.estado||''}
   );
   const rows=itemsF.map(({o,i})=>{
@@ -703,6 +703,7 @@ function rExps(pg,ac){
 
     return[
       `<span style="color:var(--acc);cursor:pointer;font-weight:600" onclick="vExp(${i})" title="Ver detalle">${o.exp} 🔍</span>`,
+      o.nro_despacho?`<span class="tdc" style="font-size:11px">${o.nro_despacho}</span>`:`<span style="color:var(--tx3);font-size:11px">—</span>`,
       `<span class="tdm">${clienteDisplay}</span>`,
       `<span style="font-size:11px">${(o.merc||'').substring(0,25)}${(o.merc||'').length>25?'...':''}</span>`,
       fF(o.f_ap),
@@ -719,8 +720,8 @@ function rExps(pg,ac){
       <span class="cn">Expedientes de Importación</span>
       <span style="font-size:11px;color:var(--tx3)">Base = Honorario del presupuesto (fijo) · Real = Cobrado − Gastos · ✅ Arribo confirmado / 📅 Estimado</span>
     </div><div class="cb">
-      ${fbar('exps',[{k:'fecha',l:'Fecha apertura'},{k:'exp',l:'Expediente'},{k:'cliente',l:'Cliente'},{k:'estado',l:'Estado'}],'Buscar expediente, cliente, mercadería...')}
-      ${tbl(['Expediente','Cliente','Mercadería','Apertura','Estado','Arribo','Rent. Base','Rent. Real','Cobrado','Acciones'],rows)}
+      ${fbar('exps',[{k:'fecha',l:'Fecha apertura'},{k:'exp',l:'Expediente'},{k:'cliente',l:'Cliente'},{k:'estado',l:'Estado'}],'Buscar expediente, despacho, cliente, mercadería...')}
+      ${tbl(['Expediente','Nro. Despacho','Cliente','Mercadería','Apertura','Estado','Arribo','Rent. Base','Rent. Real','Cobrado','Acciones'],rows)}
     </div></div>`;
   } catch(e) {
     pg.innerHTML=`<div class="card"><div class="cb"><div class="al alw">Error al cargar expedientes: ${e.message}</div></div></div>`;
@@ -767,7 +768,7 @@ function vExp(idx){
   const rbr=cobrado>0?(real>=0?'rgba(34,197,94,.2)':'rgba(239,68,68,.2)'):'rgba(245,158,11,.25)';
 
   let h=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px">`;
-  [['Cliente',clienteDeId(o.cli_id)||o.cliente],['Estado',eB(o.estado)],['País',o.pais],['TC','$ '+fN(o.tc)],['Apertura',fF(o.f_ap)],['Cierre',o.f_cl?fF(o.f_cl):'—'],['F. Est. Cobro',o.f_cobro_est?fF(o.f_cobro_est):'-']].forEach(([l,val])=>{
+  [['Nro. Despacho',o.nro_despacho||'—'],['Cliente',clienteDeId(o.cli_id)||o.cliente],['Estado',eB(o.estado)],['País',o.pais],['TC','$ '+fN(o.tc)],['Apertura',fF(o.f_ap)],['Cierre',o.f_cl?fF(o.f_cl):'—'],['F. Est. Cobro',o.f_cobro_est?fF(o.f_cobro_est):'-']].forEach(([l,val])=>{
     h+=`<div style="background:var(--s2);border-radius:6px;padding:8px"><div style="font-size:9px;color:var(--tx3);text-transform:uppercase">${l}</div><div style="font-weight:600;margin-top:2px;font-size:12px">${val}</div></div>`;
   });
   h+=`</div><div style="background:var(--s2);border-radius:6px;padding:8px;margin-bottom:12px;font-size:11px"><b>Mercadería:</b> ${o.merc} | <b>Tipo:</b> ${o.tipo}</div>`;
@@ -1377,6 +1378,7 @@ function xCierreOp(idx){
   rows.push(['CIERRE DE OPERACIÓN — '+o.exp]);
   rows.push([]);
   rows.push(['Expediente:',o.exp,'','Cliente:',clienteDisplay]);
+  rows.push(['Nro. Despacho:',o.nro_despacho||'-']);
   rows.push(['Fecha Apertura:',fF(o.f_ap)||'-','','Fecha de Arribo:',arribo]);
   rows.push(['Estado:',o.estado,'','Honorario Base:','$ '+fN(honBaseOp(o))]);
   rows.push([]);
@@ -1470,7 +1472,7 @@ function edit(tabla,idx){
 // ═══ FORM RESET HELPERS ═══════════════════════
 function rstPv(r={}){editIdx=r.id?D.proveedores.findIndex(x=>x.id===r.id):-1;['razon','cuit','iva','tel','email','cpago','moneda','activo','notas'].forEach(f=>{const el=$('pv-'+f);if(el)el.value=r[f]||'';});oTG('pv-tg',r.tg_id||'');if(r.iva&&$('pv-iva'))$('pv-iva').value=r.iva;if(r.activo&&$('pv-activo'))$('pv-activo').value=r.activo;if(r.moneda&&$('pv-moneda'))$('pv-moneda').value=r.moneda;}
 function rstCl(r={}){editIdx=r.id?D.clientes.findIndex(x=>x.id===r.id):-1;['razon','cuit','iva','contacto','tel','email','rubro','cpago','moneda','activo','notas'].forEach(f=>{const el=$('cl-'+f);if(el)el.value=r[f]||'';});if(r.iva&&$('cl-iva'))$('cl-iva').value=r.iva;if(r.activo&&$('cl-activo'))$('cl-activo').value=r.activo;if(r.moneda&&$('cl-moneda'))$('cl-moneda').value=r.moneda;}
-function rstEx(r={}){['exp','merc','pais','f_ap','f_cl','tc','hon_usd','hon_ars','importe_ref','f_cobro_est','f_arribo_est','f_arribo_conf','notas'].forEach(f=>{const el=$('ex-'+f);if(el)el.value=r[f]||'';});if($('ex-tipo'))$('ex-tipo').value=r.tipo||'Importación Definitiva para Consumo';if($('ex-estado'))$('ex-estado').value=r.estado||'EN TRAMITE';if($('ex-moneda_ref'))$('ex-moneda_ref').value=r.moneda_ref||'USD';oCl('ex-cl',r.cli_id||'');}
+function rstEx(r={}){['exp','nro_despacho','merc','pais','f_ap','f_cl','tc','hon_usd','hon_ars','importe_ref','f_cobro_est','f_arribo_est','f_arribo_conf','notas'].forEach(f=>{const el=$('ex-'+f);if(el)el.value=r[f]||'';});if($('ex-tipo'))$('ex-tipo').value=r.tipo||'Importación Definitiva para Consumo';if($('ex-estado'))$('ex-estado').value=r.estado||'EN TRAMITE';if($('ex-moneda_ref'))$('ex-moneda_ref').value=r.moneda_ref||'USD';oCl('ex-cl',r.cli_id||'');}
 function rstFP(r={}){oPv('fp-pv',r.pv_id||'');oTG('fp-tg',r.tg_id||'');['fe','fv','nro','notas'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||'';});if($('fp-asig'))$('fp-asig').value=r.asig||'ESTRUCTURA';if($('fp-ep'))$('fp-ep').value=r.ep||'PENDIENTE';if($('fp-tc2'))$('fp-tc2').value=r.tipo_comp||r.tc||'Factura A';if($('fp-mes-aplica'))$('fp-mes-aplica').value=r.mes_aplica||(r.fe?r.fe.substring(0,7):'');['n21','n105','n27','n5','n0'].forEach(f=>{const el=$('fp-'+f);if(el)el.value=r[f]||0;});if($('fp-mon'))$('fp-mon').value=r.mon||'ARS';if($('fp-tc'))$('fp-tc').value=r.tc||lTC();cIVA('fp');onFpAsigChange();}
 function rstFE(r={}){oCl('fe-cl',r.cl_id||'');oOp('fe-op',r.op_id||'',editIdx<0);['fe','fv','nro','concepto','notas'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||'';});if($('fe-ec'))$('fe-ec').value=r.ec||'PENDIENTE';if($('fe-tc2'))$('fe-tc2').value=r.tipo_comp||r.tc||'Factura A';['n21','n27','n105','n5','n0'].forEach(f=>{const el=$('fe-'+f);if(el)el.value=r[f]||0;});if($('fe-reint'))$('fe-reint').value=r.reint||0;if($('fe-mon'))$('fe-mon').value=r.mon||'USD';if($('fe-tc'))$('fe-tc').value=r.tc_v||r.tc||lTC();cIVA('fe');}
 function rstPg(r={}){
@@ -1534,7 +1536,7 @@ async function gEx(){
   const exp=v('ex-exp').trim();if(!exp){toast('Nro. Expediente es obligatorio','er');return;}
   const cliId=parseInt(v('ex-cl'))||0;const cli=D.clientes.find(c=>c.id===cliId)||{};
   const isEdit=editIdx>=0;
-  const rec={id:isEdit?D.operaciones[editIdx].id:nid(D.operaciones),exp,cli_id:cliId,cliente:cli.razon||'',merc:v('ex-merc')||'',pais:v('ex-pais')||'',tipo:v('ex-tipo')||'',f_ap:v('ex-f_ap')||null,f_cl:v('ex-f_cl')||null,estado:v('ex-estado')||'EN TRAMITE',tc:parseFloat(v('ex-tc'))||lTC(),hon_usd:parseFloat(v('ex-hon_usd'))||0,hon_ars:parseFloat(v('ex-hon_ars'))||0,importe_ref:parseFloat(v('ex-importe_ref'))||0,moneda_ref:v('ex-moneda_ref')||'USD',f_cobro_est:v('ex-f_cobro_est')||null,f_arribo_est:v('ex-f_arribo_est')||null,f_arribo_conf:v('ex-f_arribo_conf')||null,notas:v('ex-notas')||''};
+  const rec={id:isEdit?D.operaciones[editIdx].id:nid(D.operaciones),exp,nro_despacho:v('ex-nro_despacho')||'',cli_id:cliId,cliente:cli.razon||'',merc:v('ex-merc')||'',pais:v('ex-pais')||'',tipo:v('ex-tipo')||'',f_ap:v('ex-f_ap')||null,f_cl:v('ex-f_cl')||null,estado:v('ex-estado')||'EN TRAMITE',tc:parseFloat(v('ex-tc'))||lTC(),hon_usd:parseFloat(v('ex-hon_usd'))||0,hon_ars:parseFloat(v('ex-hon_ars'))||0,importe_ref:parseFloat(v('ex-importe_ref'))||0,moneda_ref:v('ex-moneda_ref')||'USD',f_cobro_est:v('ex-f_cobro_est')||null,f_arribo_est:v('ex-f_arribo_est')||null,f_arribo_conf:v('ex-f_arribo_conf')||null,notas:v('ex-notas')||''};
   const ok=await save('operaciones',rec,isEdit);if(!ok)return;
 
   // Cascada: si cambió el exp o el cliente, actualizar referencias en facturas
@@ -2627,6 +2629,7 @@ function clearPdf(){
   <div class="mh"><span class="mt">Expediente de Importación</span><button class="xb" onclick="cM('m-ex')">×</button></div>
   <div class="mb"><div class="fg">
     <div class="fgrp"><label class="flbl">Nro. Expediente *</label><input class="fc" id="ex-exp" placeholder="EXP-2025-004"></div>
+    <div class="fgrp"><label class="flbl">Nro. de Despacho</label><input class="fc" id="ex-nro_despacho" placeholder="25 001 IC04 000123 A"></div>
     <div class="fgrp"><label class="flbl">Cliente *</label><select class="fc" id="ex-cl"></select></div>
     <div class="fgrp fsp"><label class="flbl">Descripción Mercadería</label><input class="fc" id="ex-merc" placeholder="Descripción del producto importado"></div>
     <div class="fgrp"><label class="flbl">País de Origen</label><input class="fc" id="ex-pais" placeholder="China"></div>
