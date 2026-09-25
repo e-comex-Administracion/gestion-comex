@@ -1404,13 +1404,20 @@ function xCierreOp(idx){
   const idxSaldo=rows.findIndex(r=>r[0]==='RESULTADO / SALDO FINAL');
   rows[idxSaldo][2]=saldo;
 
-  const ws=XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols']=[{wch:22},{wch:34},{wch:15},{wch:3},{wch:22},{wch:34},{wch:15}];
-  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:6}}];
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,'Cierre '+o.exp.substring(0,25));
-  XLSX.writeFile(wb,'Cierre_'+o.exp.replace(/[^a-zA-Z0-9-]/g,'_')+'_'+hoy()+'.xlsx');
-  toast('✅ Excel de cierre exportado');
+  try {
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols']=[{wch:22},{wch:34},{wch:15},{wch:3},{wch:22},{wch:34},{wch:15}];
+    ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:6}}];
+    const wb=XLSX.utils.book_new();
+    // Nombre de hoja: Excel no permite / \ ? * [ ] : y tiene un máximo de 31 caracteres
+    const sheetName=('Cierre '+o.exp).replace(/[\\\/?*\[\]:]/g,'-').substring(0,31);
+    XLSX.utils.book_append_sheet(wb,ws,sheetName);
+    XLSX.writeFile(wb,'Cierre_'+o.exp.replace(/[^a-zA-Z0-9-]/g,'_')+'_'+hoy()+'.xlsx');
+    toast('✅ Excel de cierre exportado');
+  } catch(e){
+    toast('❌ Error al exportar: '+e.message,'er');
+    console.error('xCierreOp error:',e);
+  }
 }
 function xT(tabla){const wb=XLSX.utils.book_new();const m={operaciones:_xOps,facturas_prov:_xFP,facturas_emit:_xFE,pagos:_xPg,cobranzas:_xCb,proveedores:_xPvs,clientes:_xCls};if(m[tabla])m[tabla](wb);XLSX.writeFile(wb,'GestionComex_'+tabla+'_'+hoy()+'.xlsx');toast('Exportado ✓');}
 function xRent(){const wb=XLSX.utils.book_new();_xRent(wb);XLSX.writeFile(wb,'GestionComex_Rentabilidad_'+hoy()+'.xlsx');toast('Rentabilidad exportada ✓');}
