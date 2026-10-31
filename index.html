@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -92,6 +91,14 @@ textarea.fc{resize:vertical;min-height:52px}
 .tab{padding:7px 16px;border-radius:6px;cursor:pointer;font-size:12px;color:var(--tx3);font-weight:600;transition:all .15s}
 .tab:hover{color:var(--tx2)}
 .tab.active{background:var(--acc);color:#fff}
+/* ── Presupuestos: paleta (sin naranja/verde/azul; recuperables en rojo) ── */
+#m-pres [style*="var(--org)"],#m-pres [style*="var(--acc)"],#m-pres [style*="var(--grn)"]{color:#fff!important}
+#m-pres [style*="border-color:rgba"]{border-color:var(--br)!important}
+#m-pres div[style*="rgba(245,158,11"],#m-pres div[style*="rgba(79,156,249"],#m-pres div[style*="rgba(26,143,216"],#m-pres div[style*="rgba(34,197,94"]{background:transparent!important;border-color:var(--br)!important}
+#pr-tributos-box [style*="var(--org)"]{color:#C62828!important}
+#pr-recup-disp,#pr-nota-recup{color:#C62828!important}
+.pres-view .sc::before{background:#fff!important}
+.pres-view .bgo,.pres-view .bgg,.pres-view .bgb,.pres-view .bgp{background:rgba(255,255,255,.08)!important;color:#fff!important}
 </style>
 </head>
 <body>
@@ -1753,7 +1760,7 @@ function rPres(pg,ac){
       <button class="btn bd bs" onclick="del('presupuestos',${i})" title="Eliminar">🗑️</button>
     </div>`
   ]);
-  pg.innerHTML=sg([
+  pg.innerHTML=`<div class="pres-view">`+sg([
     {l:'Total',v:stats.total,c:'bl'},
     {l:'Pendientes',v:stats.pend,c:'og'},
     {l:'Aprobados',v:stats.apro,c:'gn'},
@@ -1761,7 +1768,7 @@ function rPres(pg,ac){
   ])+`<div class="card"><div class="ch"><span class="cn">Presupuestos</span></div><div class="cb">
     ${fbar('pres',[{k:'fecha',l:'Fecha'},{k:'nro',l:'Nro.'},{k:'cliente',l:'Cliente'},{k:'total',l:'Total USD'},{k:'estado',l:'Estado'}],'Buscar nro., cliente, rubro, producto...')}
     ${tbl(['Nro.','Fecha','Cliente','Rubro','Producto','Total USD','Estado','Acciones'],rows,'Sin presupuestos — creá el primero con + Nuevo Presupuesto')}
-  </div></div>`;
+  </div></div></div>`;
 }
 
 // ── Abrir modal para nuevo presupuesto ─────────────────────
@@ -1769,7 +1776,7 @@ function abrirNuevoPres(){
   editIdx=-1;editTabla='presupuestos';
   if($('pr-nro'))$('pr-nro').value=nextNroPres();
   if($('pr-fecha'))$('pr-fecha').value=new Date().toISOString().slice(0,10);
-  ['pr-cuit','pr-cliente','pr-rubro','pr-producto','pr-pos_aran','pr-precio_usd','pr-precio_eur','pr-flete_origen','pr-flete_flete','pr-flete_destino','pr-seguro_suma','pr-seguro_monto','pr-honorarios','pr-desp_gastos','pr-desp_digit','pr-desp_otros'].forEach(id=>{if($(id))$(id).value='';});
+  ['pr-cuit','pr-cliente','pr-rubro','pr-producto','pr-pos_aran','pr-precio_usd','pr-precio_eur','pr-monto_impuestos','pr-flete_informe','pr-tc_eur_usd','pr-flete_origen','pr-flete_flete','pr-flete_destino','pr-seguro_suma','pr-seguro_monto','pr-honorarios','pr-desp_gastos','pr-desp_digit','pr-desp_otros'].forEach(id=>{if($(id))$(id).value='';});
   setV('pr-seguro_prima','1');
   setV('pr-ali_derechos','0');setV('pr-ali_estadistica','3');setV('pr-ali_iva','21');setV('pr-ali_iva_ad','10');setV('pr-ali_ganancias','6');setV('pr-ali_iibb','3');
   setV('pr-banc_comision','6');setV('pr-banc_swift','50');setV('pr-banc_exterior','15');
@@ -1781,7 +1788,9 @@ function abrirNuevoPres(){
   if($('pr-estado'))$('pr-estado').value='Pendiente';
   if($('pr-tipo_cli'))$('pr-tipo_cli').value='importador';
   
-  presInitCostos([{concepto:'Gastos de depósito y portuarios',monto:'',es_iva:false},{concepto:'Transporte territorio nacional',monto:'',es_iva:false}]);
+  presItems=[];setV('pr-ddp_total','');
+  presInitCostos([{concepto:'Gastos de depósito y portuarios',monto:'',es_iva:true},{concepto:'Transporte territorio nacional',monto:'',es_iva:true}]);
+  renderPresItems();actualizarDdp();
   calcPres();
   oM('m-pres');
 }
@@ -1791,7 +1800,7 @@ function editarPres(i){
   editIdx=i;editTabla='presupuestos';
   const p=D.presupuestos[i];
   if(!p)return;
-  const flds={nro:p.nro,fecha:p.fecha,cuit:p.cuit,cliente:p.cliente,rubro:p.rubro,producto:p.producto,pos_aran:p.pos_aran,cantidad:p.cantidad||1,precio_usd:p.precio_usd||p.exw_usd||'',precio_eur:p.precio_eur||p.exw_eur||'',observaciones:p.observaciones||'',estado:p.estado||'Pendiente',flete_origen:p.flete_origen||'',flete_flete:p.flete_flete||'',flete_destino:p.flete_destino||'',seguro_suma:p.seguro_suma||'',seguro_prima:p.seguro_prima||'',seguro_monto:p.seguro||'',ali_derechos:p.ali_derechos||'',ali_estadistica:p.ali_estadistica||'',ali_iva:p.ali_iva||'',ali_iva_ad:p.ali_iva_ad||'',ali_ganancias:p.ali_ganancias||'',ali_iibb:p.ali_iibb||'',banc_comision:p.banc_comision||'',banc_swift:p.banc_swift||'',banc_exterior:p.banc_exterior||'',honorarios:p.honorarios||'',desp_gastos:p.desp_gastos||'',desp_digit:p.desp_digit||'',desp_otros:p.desp_otros||''};
+  const flds={nro:p.nro,fecha:p.fecha,cuit:p.cuit,cliente:p.cliente,rubro:p.rubro,producto:p.producto,pos_aran:p.pos_aran,cantidad:p.cantidad||1,precio_usd:p.precio_usd||p.exw_usd||'',precio_eur:p.precio_eur||p.exw_eur||'',monto_impuestos:p.monto_impuestos||'',flete_informe:p.flete_informe||'',observaciones:p.observaciones||'',estado:p.estado||'Pendiente',flete_origen:p.flete_origen||'',flete_flete:p.flete_flete||'',flete_destino:p.flete_destino||'',seguro_suma:p.seguro_suma||'',seguro_prima:p.seguro_prima||'',seguro_monto:p.seguro||'',ali_derechos:p.ali_derechos||'',ali_estadistica:p.ali_estadistica||'',ali_iva:p.ali_iva||'',ali_iva_ad:p.ali_iva_ad||'',ali_ganancias:p.ali_ganancias||'',ali_iibb:p.ali_iibb||'',banc_comision:p.banc_comision||'',banc_swift:p.banc_swift||'',banc_exterior:p.banc_exterior||'',honorarios:p.honorarios||'',desp_gastos:p.desp_gastos||'',desp_digit:p.desp_digit||'',desp_otros:p.desp_otros||''};
   Object.entries(flds).forEach(([k,val])=>{if($('pr-'+k))$('pr-'+k).value=val||'';});
   if($('pr-incoterm'))$('pr-incoterm').value=p.incoterm||'EXW';
   if($('pr-flete_tipo'))$('pr-flete_tipo').value=p.flete_tipo||'Marítimo';
@@ -1800,6 +1809,7 @@ function editarPres(i){
   if($('pr-arancel_sim'))$('pr-arancel_sim').value='10.00';
   togglePresDestino();
   presInitCostos(p.otros_costos||p.costos||[]);
+  presItems=(p.items_extra||[]).slice();renderPresItems();setV('pr-ddp_total',p.ddp_total||'');setV('pr-tc_eur_usd','');actualizarDdp();
   calcPres();
   oM('m-pres');
 }
@@ -1838,24 +1848,128 @@ function presGetCostos(){
   });
 }
 
+// ── Ítems adicionales y DDP (Presupuestos) ─────────────────
+let presItems=[];
+let editItemIdx=-1;
+function calcItem(it,esImp,bu,sh){
+  const p=parseFloat(it.precio)||0;
+  const vi=p+(sh||0);
+  const der=vi*(parseFloat(it.der)||0)/100, est=vi*(parseFloat(it.est)||0)/100;
+  const base=vi+der+est;
+  const iva=base*(parseFloat(it.iva)||0)/100;
+  const ivaAd=bu?0:base*(parseFloat(it.ivaad)||0)/100;
+  const gan=bu?0:base*(parseFloat(it.gan)||0)/100;
+  const iibb=bu?0:base*(parseFloat(it.iibb)||0)/100;
+  const trib=der+est+iva+ivaAd+gan+iibb;
+  const total=p+trib;
+  const recup=esImp?(iva+ivaAd+gan+iibb):iva;
+  return{trib,total,recup};
+}
+function presShareOf(precio,excl=-1){
+  const pm=nv('pr-precio_usd');
+  const tot=pm+presItems.reduce((a,it,i)=>a+(i===excl?0:(parseFloat(it.precio)||0)),0)+(parseFloat(precio)||0);
+  const p=tot>0?(parseFloat(precio)||0)/tot:0;
+  const sumaAseg=nv('pr-seguro_suma')||(pm+presItems.reduce((a,it)=>a+(parseFloat(it.precio)||0),0));
+  const seguroTot=sumaAseg*nv('pr-seguro_prima')/100||nv('pr-seguro_monto');
+  return p*(nv('pr-flete_flete')+seguroTot);
+}
+function presItemsTotals(){
+  const esImp=v('pr-tipo_cli')!=='no_importador';
+  const bu=esImp&&v('pr-destino')==='bien_uso';
+  return presItems.reduce((a,it,i)=>{
+    const c=calcItem(it,esImp,bu,presShareOf(it.precio,i));
+    a.total+=c.total;a.recup+=c.recup;return a;
+  },{total:0,recup:0});
+}
+function renderPresItems(){
+  const cont=$('pr-items-list');if(!cont)return;
+  const esImp=v('pr-tipo_cli')!=='no_importador';
+  const bu=esImp&&v('pr-destino')==='bien_uso';
+  if(!presItems.length){cont.innerHTML='<div style="font-size:11px;color:var(--tx3)">Sin ítems adicionales</div>';return;}
+  cont.innerHTML=presItems.map((it,i)=>{const c=calcItem(it,esImp,bu,presShareOf(it.precio,i));return`
+    <div style="display:grid;grid-template-columns:1fr 120px 120px 120px 80px;gap:7px;align-items:center;margin-bottom:6px;font-size:12px">
+      <span>${it.desc||'Ítem '+(i+1)}</span>
+      <span style="font-family:var(--fm)">DDP ${fN2(presDdpOf(it.precio))}</span>
+      <span style="font-family:var(--fm)">Total USD ${fN2(c.total)}</span>
+      <span style="font-family:var(--fm);color:#C62828">Recup. $${fN2(c.recup)}</span>
+      <span><button class="btn bg2 bs" onclick="abrirItem(${i})">✏</button> <button class="btn bd bs" onclick="eliminarItem(${i})">🗑</button></span>
+    </div>`;}).join('');
+}
+function abrirItem(i){
+  editItemIdx=i;
+  const it=i>=0?presItems[i]:{};
+  ['desc','precio','der','est','iva','ivaad','gan','iibb'].forEach(k=>{
+    const el=$('it-'+k);if(el)el.value=it[k]!==undefined?it[k]:(k==='iva'?21:'');
+  });
+  actualizarItemModal();
+  oM('m-item');
+}
+function actualizarItemModal(){
+  const it={precio:v('it-precio'),der:v('it-der'),est:v('it-est'),iva:v('it-iva'),ivaad:v('it-ivaad'),gan:v('it-gan'),iibb:v('it-iibb')};
+  const esImp=v('pr-tipo_cli')!=='no_importador';
+  const bu=esImp&&v('pr-destino')==='bien_uso';
+  const c=calcItem(it,esImp,bu,presShareOf(it.precio,editItemIdx));
+  setT('it-res-trib','USD '+fN2(c.trib));
+  setT('it-res-total','USD '+fN2(c.total));
+  setT('it-res-recup','USD '+fN2(c.recup));
+}
+function guardarItem(){
+  const it={desc:v('it-desc').trim(),precio:parseFloat(v('it-precio'))||0,der:parseFloat(v('it-der'))||0,est:parseFloat(v('it-est'))||0,iva:parseFloat(v('it-iva'))||0,ivaad:parseFloat(v('it-ivaad'))||0,gan:parseFloat(v('it-gan'))||0,iibb:parseFloat(v('it-iibb'))||0};
+  if(editItemIdx>=0)presItems[editItemIdx]=it;else presItems.push(it);
+  cM('m-item');renderPresItems();calcPres();
+}
+function eliminarItem(i){presItems.splice(i,1);renderPresItems();calcPres();}
+function presDdpTotalPrecios(){
+  return nv('pr-precio_usd')+presItems.reduce((a,it)=>a+(parseFloat(it.precio)||0),0);
+}
+function presDdpOf(precio){
+  const tot=presDdpTotalPrecios();
+  const ddp=nv('pr-ddp_total');
+  return tot>0?(parseFloat(precio)||0)/tot*ddp:0;
+}
+function actualizarDdp(){
+  setT('pr-ddp-principal','DDP prorrateado producto principal: USD '+fN2(presDdpOf(nv('pr-precio_usd'))));
+  renderPresItems();
+}
+
 // ── Calcular totales ───────────────────────────────────────
 function nv(id){return parseFloat(v(id))||0;}
+async function buscarTcEcb(){
+  const fecha=v('pr-fecha')||new Date().toISOString().slice(0,10);
+  try{
+    const resp=await fetch('https://api.frankfurter.app/'+fecha+'?from=EUR&to=USD');
+    const d=await resp.json();
+    const tc=d.rates&&d.rates.USD;
+    if(tc){setV('pr-tc_eur_usd',tc.toFixed(4));toast('TC BCE '+d.date+': '+tc.toFixed(4));}
+    else toast('No se pudo obtener el TC del BCE','er');
+  }catch(e){toast('Error al consultar el TC del BCE','er');}
+}
+async function convertirEurUsd(){
+  const eur=nv('pr-precio_eur');
+  if(eur>0&&!nv('pr-tc_eur_usd')) await buscarTcEcb();
+  const tc=nv('pr-tc_eur_usd');
+  if(eur>0&&tc>0) setV('pr-precio_usd',(eur*tc).toFixed(2));
+  calcPres();
+}
 function setV(id,val){if($(id))$(id).value=val;}
 function setT(id,txt){if($(id))$(id).textContent=txt;}
 function calcPres(){
   const esImportador=v('pr-tipo_cli')!=='no_importador';
   const precioUSD=nv('pr-precio_usd');
+  const impBase=nv('pr-monto_impuestos')||precioUSD;
   // ── Flete: solo el flete internacional integra el VI ──
   const fleteOrigen=nv('pr-flete_origen'),fleteFlete=nv('pr-flete_flete'),fleteDestino=nv('pr-flete_destino');
   const totalFlete=fleteOrigen+fleteFlete+fleteDestino;
   setT('pr-total-flete-disp','USD '+fN(totalFlete));
   // ── Seguro: prima% sobre suma asegurable (default = precio), o monto directo ──
-  const sumaAseg=nv('pr-seguro_suma')||precioUSD;
+  const sumaAseg=nv('pr-seguro_suma')||(precioUSD+presItems.reduce((a,it)=>a+(parseFloat(it.precio)||0),0));
   const prima=nv('pr-seguro_prima');
   let seguro=nv('pr-seguro_monto');
   if(prima>0){seguro=sumaAseg*prima/100;setV('pr-seguro_monto',seguro.toFixed(2));}
   // ── Valor Imponible (Excel): VI = Precio + Flete Internacional + Seguro ──
-  const vi=precioUSD+fleteFlete+seguro;
+  const presTot=precioUSD+presItems.reduce((a,it)=>a+(parseFloat(it.precio)||0),0);
+  const shMain=presTot>0?precioUSD/presTot:1;
+  const vi=impBase+(fleteFlete+seguro)*shMain;
   setV('pr-vi',vi.toFixed(2));
   // ── Tributos sobre VI ──
   const derechos=vi*nv('pr-ali_derechos')/100;
@@ -1892,7 +2006,10 @@ function calcPres(){
   const otros=presGetCostos();
   const totalOtros=otros.reduce((a,c)=>a+(c.es_iva?(c.monto||0)*1.21:(c.monto||0)),0);
   // ── Total erogación ──
-  const totalUSD=precioUSD+totalFlete+seguro+totalTrib+bancario+despTotal+totalOtros;
+  const ivaFleteSeg=(nv('pr-flete_destino')+seguro)*0.21;
+  const ivaConceptos=esImportador?((nv('pr-flete_destino')+seguro+honorarios+nv('pr-desp_gastos')+nv('pr-desp_digit')+nv('pr-desp_otros')+otros.reduce((a,c)=>a+(c.es_iva?(c.monto||0):0),0))*0.21):0;
+  const ext=presItemsTotals();
+  const totalUSD=precioUSD+totalFlete+seguro+totalTrib+bancario+despTotal+totalOtros+ivaFleteSeg+ext.total;
   setV('pr-total_usd',totalUSD.toFixed(2));
   // ── Recuperables según condición y destino ──
   // SIM nunca es recuperable. IVA siempre recuperable si importador.
@@ -1902,19 +2019,18 @@ function calcPres(){
   // El Arancel SIM NUNCA es recuperable (es un costo).
   let recuperables=0;
   if(esImportador){
-    recuperables=iva+ivaAd+gan+iibb;
+    recuperables=iva+ivaAd+gan+iibb+ivaConceptos+ext.recup;
     setT('pr-recup-disp','Recuperables: − USD '+fN2(recuperables));
   } else {
-    // No importador: costo final = total erogación / (1 + ali_iva/100)
-    const aliIva=nv('pr-ali_iva')||21;
-    const divisor=1+(aliIva/100);
-    recuperables=totalUSD-(totalUSD/divisor);
-    setT('pr-recup-disp','No importador: − IVA ('+aliIva+'%) USD '+fN2(recuperables));
+    const ivaServ=(honorarios+nv('pr-desp_gastos')+nv('pr-desp_digit')+nv('pr-desp_otros')+otros.reduce((a,c)=>a+(c.es_iva?(c.monto||0):0),0))*0.21;
+    recuperables=iva+ivaServ+ext.recup;
+    setT('pr-recup-disp','No importador: − IVA recuperable USD '+fN2(recuperables));
   }
   const costoFinal=totalUSD-recuperables;
   setV('pr-costo_final',costoFinal.toFixed(2));
   const qty=nv('pr-cantidad')||1;
   setV('pr-costo_unit',(costoFinal/qty).toFixed(2));
+  actualizarDdp();
 }
 function togglePresDestino(){
   const esImp=v('pr-tipo_cli')!=='no_importador';
@@ -1969,16 +2085,16 @@ async function gPres(){
     rubro:v('pr-rubro'),producto:v('pr-producto'),
     descripcion:v('pr-descripcion'),clasificacion:v('pr-clasificacion'),
     pos_aran:v('pr-pos_aran'),cantidad:parseFloat(v('pr-cantidad'))||1,
-    incoterm,precio_usd:precioUSD,precio_eur:precioEUR,
+    incoterm,precio_usd:precioUSD,precio_eur:precioEUR,monto_impuestos:nv('pr-monto_impuestos'),
     flete_tipo:v('pr-flete_tipo')||'Marítimo',
-    flete_origen:nv('pr-flete_origen'),flete_flete:nv('pr-flete_flete'),flete_destino:nv('pr-flete_destino'),
+    flete_origen:nv('pr-flete_origen'),flete_flete:nv('pr-flete_flete'),flete_destino:nv('pr-flete_destino'),flete_informe:nv('pr-flete_informe'),
     seguro_suma:nv('pr-seguro_suma'),seguro_prima:nv('pr-seguro_prima'),seguro:nv('pr-seguro_monto'),
     ali_derechos:nv('pr-ali_derechos'),ali_estadistica:nv('pr-ali_estadistica'),ali_iva:nv('pr-ali_iva'),ali_iva_ad:nv('pr-ali_iva_ad'),ali_ganancias:nv('pr-ali_ganancias'),ali_iibb:nv('pr-ali_iibb'),
     vi:nv('pr-vi'),base_iva:nv('pr-base_iva'),
     derechos:nv('pr-derechos'),tasa_est:nv('pr-tasa_est'),iva_aduana:nv('pr-iva_aduana'),iva_adicional:nv('pr-iva_adicional'),ganancias:nv('pr-ganancias'),iibb:nv('pr-iibb'),arancel_sim:10,
     banc_comision:nv('pr-banc_comision'),banc_swift:nv('pr-banc_swift'),banc_exterior:nv('pr-banc_exterior'),bancario:nv('pr-banc_total'),
     honorarios,desp_gastos:nv('pr-desp_gastos'),desp_digit:nv('pr-desp_digit'),desp_otros:nv('pr-desp_otros'),
-    otros_costos:costos,
+    otros_costos:costos,items_extra:presItems,ddp_total:nv('pr-ddp_total'),
     total_usd:nv('pr-total_usd'),costo_final:nv('pr-costo_final'),
     es_importador:v('pr-tipo_cli')!=='no_importador',
     destino:v('pr-destino')||'comercializable',
@@ -2110,31 +2226,22 @@ function _doPPT(i){
   const recIVA=esImp,recOtros=esImp&&destino!=='bien_uso';
   const rows=[];
   const hdr=(t)=>({text:t,options:{bold:true,fill:{color:NAVY},color:WHT,fontFace:'Arial',fontSize:11}});
-  // Para no importador: tabla de 2 columnas (sin Recuperable)
-  if(esImp){
-    rows.push([hdr('Concepto'),hdr('Importe USD'),{text:'Recuperable',options:{bold:true,fill:{color:NAVY},color:WHT,fontFace:'Arial',fontSize:11,align:'center'}}]);
-  } else {
-    rows.push([hdr('Concepto'),hdr('Importe USD')]);
-  }
-  let rIdx=0;
-  const addR=(concepto,monto,recup)=>{const bg=rIdx%2===0?WHT:BGSOFT;rIdx++;
-    if(esImp){
-      rows.push([
-        {text:concepto,options:{fontFace:'Arial',fontSize:11,color:INK,fill:{color:bg}}},
-        {text:fN2(monto),options:{fontFace:'Arial',fontSize:11,color:INK,align:'right',fill:{color:bg}}},
-        {text:recup?'Sí':'',options:{fontFace:'Arial',fontSize:10,color:YEL,bold:true,align:'center',fill:{color:bg}}}
-      ]);
-    } else {
-      rows.push([
-        {text:concepto,options:{fontFace:'Arial',fontSize:11,color:INK,fill:{color:bg}}},
-        {text:fN2(monto),options:{fontFace:'Arial',fontSize:11,color:INK,align:'right',fill:{color:bg}}}
-      ]);
-    }
+  // Tabla de 2 columnas (Concepto / Importe). Lo recuperable va en rojo.
+  rows.push([hdr('Concepto'),hdr('Importe USD')]);
+  let rIdx=0, ivaConceptos=0;
+  const addR=(concepto,monto,recup,ivaC)=>{const bg=rIdx%2===0?WHT:BGSOFT;rIdx++;
+    ivaConceptos+=(ivaC||0);
+    rows.push([
+      {text:concepto,options:{fontFace:'Arial',fontSize:11,color:INK,fill:{color:bg}}},
+      {text:fN2(monto),options:{fontFace:'Arial',fontSize:11,color:recup?'C62828':INK,bold:!!recup,align:'right',fill:{color:bg}}}
+    ]);
   };
   addR('Precio del producto',p.precio_usd||0,false);
+  (p.items_extra||[]).forEach((it,k)=>{ if((it.precio||0)>0) addR(it.desc||('Ítem adicional '+(k+1)),it.precio,false); });
   const ftot=(p.flete_origen||0)+(p.flete_flete||0)+(p.flete_destino||0);
-  if(ftot>0)addR('Flete '+(p.flete_tipo||'Marítimo')+' internacional',ftot,false);
-  if(p.seguro>0)addR('Seguro internacional',p.seguro,false);
+  const fleteInf=(p.flete_informe||0)>0?p.flete_informe:ftot;
+  if(fleteInf>0)addR('Flete '+(p.flete_tipo||'Marítimo')+' internacional',esImp?fleteInf:fleteInf+(p.flete_destino||0)*0.21,false,esImp?(p.flete_destino||0)*0.21:0);
+  if(p.seguro>0)addR('Seguro internacional',esImp?p.seguro:p.seguro*1.21,false,esImp?p.seguro*0.21:0);
   if(p.derechos>0)addR('Derechos de importación ('+fN2(p.ali_derechos||0)+'%)',p.derechos,false);
   if(p.tasa_est>0)addR('Tasa de estadística',p.tasa_est,false);
   if(p.iva_aduana>0)addR('IVA ('+fN2(p.ali_iva||0)+'%)',p.iva_aduana,recIVA);
@@ -2144,47 +2251,23 @@ function _doPPT(i){
   addR('Arancel SIM',10,false);
   if(p.bancario>0)addR('Gastos de transferencia internacional',p.bancario,false);
   const despNeto=(p.honorarios||0)+(p.desp_gastos||0)+(p.desp_digit||0)+(p.desp_otros||0);
-  if(despNeto>0)addR('Honorarios y gastos despachante',despNeto*1.21,false);
-  (p.otros_costos||[]).forEach(c=>{if(c.monto>0)addR(c.concepto||'Otro costo',c.es_iva?c.monto*1.21:c.monto,false);});
+  if(despNeto>0)addR('Honorarios y gastos despachante',esImp?despNeto:despNeto*1.21,false,esImp?despNeto*0.21:0);
+  (p.otros_costos||[]).forEach(c=>{if(c.monto>0)addR(c.concepto||'Otro costo',(c.es_iva&&!esImp)?c.monto*1.21:c.monto,false,(esImp&&c.es_iva)?c.monto*0.21:0);});
   // Total
-  const totalDisplay=esImp?(p.total_usd||0):(p.total_usd||0);
+  const totalDisplay=p.total_usd||0;
   if(esImp){
-    rows.push([
-      {text:'TOTAL EROGACIÓN',options:{bold:true,fill:{color:BGSOFT},color:INK,fontFace:'Arial',fontSize:12}},
-      {text:fN2(totalDisplay),options:{bold:true,fill:{color:BGSOFT},color:NAVY,fontFace:'Arial',fontSize:13,align:'right'}},
-      {text:'',options:{fill:{color:BGSOFT}}}
-    ]);
-    const recup=(p.total_usd||0)-(p.costo_final||0);
-    rows.push([
-      {text:'(−) Tributos recuperables',options:{italic:true,fill:{color:WHT},color:YEL,fontFace:'Arial',fontSize:10}},
-      {text:'-'+fN2(recup),options:{italic:true,fill:{color:WHT},color:YEL,fontFace:'Arial',fontSize:10,align:'right'}},
-      {text:'',options:{fill:{color:WHT}}}
-    ]);
-    rows.push([
-      {text:'COSTO FINAL',options:{bold:true,fill:{color:NAVY},color:WHT,fontFace:'Arial',fontSize:12}},
-      {text:fN2(p.costo_final||0),options:{bold:true,fill:{color:NAVY},color:WHT,fontFace:'Arial',fontSize:13,align:'right'}},
-      {text:'',options:{fill:{color:NAVY}}}
-    ]);
+    rows.push([{text:'TOTAL EROGACIÓN',options:{bold:true,fill:{color:BGSOFT},color:INK,fontFace:'Arial',fontSize:12}},{text:fN2(totalDisplay),options:{bold:true,fill:{color:BGSOFT},color:NAVY,fontFace:'Arial',fontSize:13,align:'right'}}]);
+    rows.push([{text:'(−) IVA de conceptos',options:{italic:true,fill:{color:WHT},color:'C62828',fontFace:'Arial',fontSize:10}},{text:'-'+fN2(ivaConceptos),options:{italic:true,fill:{color:WHT},color:'C62828',fontFace:'Arial',fontSize:10,align:'right'}}]);
+    const recup=(p.total_usd||0)-(p.costo_final||0)-ivaConceptos;
+    rows.push([{text:'(−) Tributos recuperables',options:{italic:true,fill:{color:WHT},color:'C62828',fontFace:'Arial',fontSize:10}},{text:'-'+fN2(recup),options:{italic:true,fill:{color:WHT},color:'C62828',fontFace:'Arial',fontSize:10,align:'right'}}]);
+    rows.push([{text:'COSTO FINAL',options:{bold:true,fill:{color:NAVY},color:WHT,fontFace:'Arial',fontSize:12}},{text:fN2(p.costo_final||0),options:{bold:true,fill:{color:NAVY},color:WHT,fontFace:'Arial',fontSize:13,align:'right'}}]);
   } else {
-    rows.push([
-      {text:'TOTAL EROGACIÓN',options:{bold:true,fill:{color:BGSOFT},color:INK,fontFace:'Arial',fontSize:12}},
-      {text:fN2(totalDisplay),options:{bold:true,fill:{color:BGSOFT},color:NAVY,fontFace:'Arial',fontSize:13,align:'right'}}
-    ]);
+    rows.push([{text:'TOTAL EROGACIÓN',options:{bold:true,fill:{color:BGSOFT},color:INK,fontFace:'Arial',fontSize:12}},{text:fN2(totalDisplay),options:{bold:true,fill:{color:BGSOFT},color:NAVY,fontFace:'Arial',fontSize:13,align:'right'}}]);
     const ivaDesc=(p.total_usd||0)-(p.costo_final||0);
-    rows.push([
-      {text:'(−) IVA ('+fN2(p.ali_iva||21)+'%)',options:{italic:true,fill:{color:WHT},color:YEL,fontFace:'Arial',fontSize:10}},
-      {text:'-'+fN2(ivaDesc),options:{italic:true,fill:{color:WHT},color:YEL,fontFace:'Arial',fontSize:10,align:'right'}}
-    ]);
-    rows.push([
-      {text:'COSTO FINAL',options:{bold:true,fill:{color:NAVY},color:WHT,fontFace:'Arial',fontSize:12}},
-      {text:fN2(p.costo_final||0),options:{bold:true,fill:{color:NAVY},color:WHT,fontFace:'Arial',fontSize:13,align:'right'}}
-    ]);
+    rows.push([{text:'(−) IVA recuperable',options:{italic:true,fill:{color:WHT},color:'C62828',fontFace:'Arial',fontSize:10}},{text:'-'+fN2(ivaDesc),options:{italic:true,fill:{color:WHT},color:'C62828',fontFace:'Arial',fontSize:10,align:'right'}}]);
+    rows.push([{text:'COSTO FINAL',options:{bold:true,fill:{color:NAVY},color:WHT,fontFace:'Arial',fontSize:12}},{text:fN2(p.costo_final||0),options:{bold:true,fill:{color:NAVY},color:WHT,fontFace:'Arial',fontSize:13,align:'right'}}]);
   }
-  if(esImp){
-    s2.addTable(rows,{x:0.4,y:2.0,w:12.5,colW:[8.3,2.7,1.5],border:{pt:0.5,color:LINE},autoPage:false,rowH:0.32});
-  } else {
-    s2.addTable(rows,{x:0.4,y:2.0,w:12.5,colW:[9.8,2.7],border:{pt:0.5,color:LINE},autoPage:false,rowH:0.32});
-  }
+  s2.addTable(rows,{x:0.4,y:2.0,w:12.5,colW:[9.8,2.7],border:{pt:0.5,color:LINE},autoPage:false,rowH:0.32});
   ffoot(s2);
 
   // ══ SLIDE 3: Resumen por Ítem + Observaciones ══
@@ -2911,7 +2994,15 @@ function clearPdf(){
         <div class="fgrp"><label class="flbl">Precio USD *</label>
           <input type="number" class="fc" id="pr-precio_usd" placeholder="0.00" oninput="calcPres()"></div>
         <div class="fgrp"><label class="flbl">Precio EUR (alternativo)</label>
-          <input type="number" class="fc" id="pr-precio_eur" placeholder="0.00"></div>
+          <input type="number" class="fc" id="pr-precio_eur" placeholder="0.00" oninput="convertirEurUsd()"></div>
+        <div class="fgrp"><label class="flbl">TC EUR → USD del día (BCE)</label>
+          <input type="number" class="fc" id="pr-tc_eur_usd" placeholder="automático" step="0.0001" readonly></div>
+        <div class="fgrp"><label class="flbl">Monto para el cálculo de impuestos USD (vacío = Precio)</label>
+          <input type="number" class="fc" id="pr-monto_impuestos" placeholder="0.00" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl">Total DDP USD (costo total, se reparte por ítem)</label>
+          <input type="number" class="fc" id="pr-ddp_total" placeholder="0.00" oninput="actualizarDdp()"></div>
+        <!-- 1.3 -->
+        <div id="pr-ddp-principal" class="fsp" style="font-size:11px;color:var(--tx3);margin-top:2px">DDP prorrateado producto principal: USD 0,00</div>
       </div>
     </div>
 
@@ -2927,8 +3018,10 @@ function clearPdf(){
       <div class="fg">
         <div class="fgrp"><label class="flbl">Gastos en Origen (USD)</label>
           <input type="number" class="fc" id="pr-flete_origen" placeholder="0.00" oninput="calcPres()"></div>
-        <div class="fgrp"><label class="flbl">Flete (USD) — integra el Valor Imponible</label>
+        <div class="fgrp"><label class="flbl">Flete para cálculo de impuestos USD (integra VI)</label>
           <input type="number" class="fc" id="pr-flete_flete" placeholder="0.00" oninput="calcPres()"></div>
+        <div class="fgrp"><label class="flbl">Flete para informe USD (vacío = suma de fletes)</label>
+          <input type="number" class="fc" id="pr-flete_informe" placeholder="0.00"></div>
         <div class="fgrp"><label class="flbl">Gastos en Destino (USD)</label>
           <input type="number" class="fc" id="pr-flete_destino" placeholder="0.00" oninput="calcPres()"></div>
       </div>
@@ -2948,7 +3041,7 @@ function clearPdf(){
     </div>
 
     <!-- TRIBUTOS ADUANEROS — ALÍCUOTAS → MONTOS AUTO -->
-    <div style="background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.15);border-radius:7px;padding:11px;margin-top:10px">
+    <div id="pr-tributos-box" style="background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.15);border-radius:7px;padding:11px;margin-top:10px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="font-size:10px;color:var(--red);font-weight:600;text-transform:uppercase">Tributos Aduaneros — ingresá alícuotas, los montos se calculan solos</div>
         <span id="pr-total-trib-disp" style="font-size:11px;color:var(--red);font-family:var(--fm)">USD 0</span>
@@ -2985,7 +3078,7 @@ function clearPdf(){
         <div class="fgrp"><label class="flbl">Arancel SIM USD — fijo, NO recuperable</label>
           <input type="number" class="fc" id="pr-arancel_sim" value="10.00" readonly style="color:var(--tx3)"></div>
       </div>
-      <div style="font-size:10px;color:var(--org);margin-top:8px">Los ítems en naranja son recuperables para Responsable Inscripto según el destino. El Arancel SIM NO es recuperable.</div>
+      <div id="pr-nota-recup" style="font-size:10px;color:#C62828;margin-top:8px">Los ítems en rojo son recuperables para Responsable Inscripto según el destino. El Arancel SIM NO es recuperable.</div>
     </div>
 
     <!-- GASTOS BANCARIOS -->
@@ -3036,6 +3129,15 @@ function clearPdf(){
       <div id="pr-costos-rows"></div>
     </div>
 
+    <!-- ÍTEMS ADICIONALES -->
+    <div class="fsp" style="margin-top:8px;background:var(--s2);border-radius:7px;padding:11px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span class="flbl">Ítems adicionales (suman al cálculo, no se muestran en el PowerPoint)</span>
+        <button type="button" class="btn bg2 bs" onclick="abrirItem(-1)">＋ Agregar ítem</button>
+      </div>
+      <div id="pr-items-list"></div>
+    </div>
+
     <!-- RESUMEN -->
     <div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:7px;padding:11px;margin-top:10px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -3067,6 +3169,28 @@ function clearPdf(){
     <button class="btn bg2" onclick="cM('m-pres')">Cancelar</button>
     <button class="btn bp" onclick="gPres()">💾 Guardar</button>
   </div>
+</div></div>
+
+<!-- ═══ MODAL ÍTEM ADICIONAL (PRESUPUESTOS) ═══ -->
+<div class="mo" id="m-item"><div class="md" style="max-width:640px">
+  <div class="mh"><span class="mt">Ítem adicional (solo tributos propios)</span><button class="xb" onclick="cM('m-item')">×</button></div>
+  <div class="mb"><div class="fg">
+    <div class="fgrp fsp"><label class="flbl">Descripción</label><input class="fc" id="it-desc" placeholder="Accesorio, repuesto..."></div>
+    <div class="fgrp"><label class="flbl">Precio USD</label><input type="number" class="fc" id="it-precio" placeholder="0.00" oninput="actualizarItemModal()"></div>
+    <div class="fgrp"></div>
+    <div class="fgrp"><label class="flbl">Alíc. Derechos %</label><input type="number" class="fc" id="it-der" placeholder="0" step="0.1" oninput="actualizarItemModal()"></div>
+    <div class="fgrp"><label class="flbl">Alíc. Estadística %</label><input type="number" class="fc" id="it-est" placeholder="0" step="0.1" oninput="actualizarItemModal()"></div>
+    <div class="fgrp"><label class="flbl">Alíc. IVA %</label><input type="number" class="fc" id="it-iva" placeholder="21" step="0.1" oninput="actualizarItemModal()"></div>
+    <div class="fgrp"><label class="flbl">Alíc. IVA Adicional %</label><input type="number" class="fc" id="it-ivaad" placeholder="0" step="0.1" oninput="actualizarItemModal()"></div>
+    <div class="fgrp"><label class="flbl">Alíc. Ganancias %</label><input type="number" class="fc" id="it-gan" placeholder="0" step="0.1" oninput="actualizarItemModal()"></div>
+    <div class="fgrp"><label class="flbl">Alíc. IIBB %</label><input type="number" class="fc" id="it-iibb" placeholder="0" step="0.1" oninput="actualizarItemModal()"></div>
+    <div class="ibox" style="font-size:12px">
+      <div>Tributos del ítem: <b id="it-res-trib">USD 0</b></div>
+      <div>Total del ítem (con tributos): <b id="it-res-total">USD 0</b></div>
+      <div style="color:#C62828">Recuperable del ítem: <b id="it-res-recup">USD 0</b></div>
+    </div>
+  </div></div>
+  <div class="mf"><button class="btn bg2" onclick="cM('m-item')">Cancelar</button><button class="btn bp" onclick="guardarItem()">💾 Guardar ítem</button></div>
 </div></div>
 </body>
 </html>
