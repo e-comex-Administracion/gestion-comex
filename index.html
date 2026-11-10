@@ -1789,7 +1789,7 @@ function abrirNuevoPres(){
   if($('pr-estado'))$('pr-estado').value='Pendiente';
   if($('pr-tipo_cli'))$('pr-tipo_cli').value='importador';
   
-  presItems=[];presProds=[];renderPresProds();setV('pr-ddp_total','');tcEurManual=false;setT('pr-tc_eur_info','');
+  presItems=[];presProds=[];presFichas=[];renderPresProds();setV('pr-ddp_total','');tcEurManual=false;setT('pr-tc_eur_info','');
   presInitCostos([{concepto:'Gastos de depósito y portuarios',monto:'',es_iva:true},{concepto:'Transporte territorio nacional',monto:'',es_iva:true}]);
   renderPresItems();actualizarDdp();
   calcPres();
@@ -1810,7 +1810,7 @@ function editarPres(i){
   if($('pr-arancel_sim'))$('pr-arancel_sim').value='10.00';
   togglePresDestino();
   presInitCostos(p.otros_costos||p.costos||[]);
-  presItems=[];presProds=(p.items_extra||[]).filter(x=>x.tipo==='producto').map(x=>({...presAliDefault(),...x}));renderPresProds();renderPresItems();setV('pr-ddp_total',p.ddp_total||'');setV('pr-tc_eur_usd','');tcEurManual=false;setT('pr-tc_eur_info','');actualizarDdp();
+  presItems=[];presProds=(p.items_extra||[]).filter(x=>x.tipo==='producto').map(x=>({...presAliDefault(),...x}));fichasCargar(p.items_extra);renderPresProds();renderPresItems();setV('pr-ddp_total',p.ddp_total||'');setV('pr-tc_eur_usd','');tcEurManual=false;setT('pr-tc_eur_info','');actualizarDdp();
   calcPres();
   oM('m-pres');
 }
@@ -1859,11 +1859,96 @@ function presAliDefault(){return{pos_aran:'',ali_der:nv('pr-ali_derechos'),ali_e
 function presProdVacio(){return{nombre:'',cantidad:1,incoterm:v('pr-incoterm')||'EXW',precio_usd:'',precio_eur:'',tc:'',tc_manual:false,monto_imp:'',...presAliDefault()};}
 function presAddProd(){presProds.push(presProdVacio());renderPresProds();calcPres();
   setTimeout(()=>{const el=$('prx-nombre-'+(presProds.length-1));if(el)el.focus();},0);}
-function presDelProd(i){if(!confirm('¿Quitar este producto?'))return;presProds.splice(i,1);renderPresProds();calcPres();}
+function presDelProd(i){if(!confirm('¿Quitar este producto?'))return;presProds.splice(i,1);presFichas.splice(i+1,1);renderPresProds();calcPres();}
 function presProdSet(i,k,val){const pr=presProds[i];if(!pr)return;
   if(k==='nombre'||k==='incoterm'||k==='pos_aran')pr[k]=val;else pr[k]=val===''?'':parseFloat(val)||0;
   if(k==='tc'){pr.tc_manual=(parseFloat(val)||0)>0;presProdAplicarEur(i);}
   calcPres();}
+// ── Ficha del producto (link → imágenes y características para el PDF) ──
+// Usa la Edge Function "extraer-producto" de Supabase. presFichas[k]: k=0 producto 1, k=i+1 producto adicional i.
+const FICHA_FN='https://qmbokvjtomrwezbklkay.supabase.co/functions/v1/extraer-producto';
+const FICHA_MAX_IMG=4;
+let presFichas=[];
+function fichaVacia(){return{url:'',titulo:'',imgs:[],sel:[],data:{},caracts:''};}
+function fichaGet(k){return presFichas[k]||(presFichas[k]=fichaVacia());}
+function fichaEsc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function fichaHTML(k){
+  const f=fichaGet(k),hay=f.url||f.imgs.length||f.caracts;
+  const thumbs=f.imgs.length?`<div style="font-size:11px;color:var(--tx3);margin:9px 0 5px">Tocá las imágenes que van al PDF (${f.sel.length}/${FICHA_MAX_IMG})</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${f.imgs.map((u,j)=>{const on=f.sel.includes(u);return `<img src="${fichaEsc(f.data[u]||u)}" referrerpolicy="no-referrer" loading="lazy" onclick="fichaToggleImg(${k},${j})" title="${on?'Quitar del PDF':'Agregar al PDF'}" style="width:74px;height:74px;object-fit:contain;background:#fff;border-radius:6px;cursor:pointer;border:2px solid ${on?'var(--acc)':'transparent'};opacity:${on?1:.5}" onerror="this.style.display='none'">`;}).join('')}</div>`:'';
+  return `<div style="border:1px dashed var(--br);border-radius:7px;padding:10px;margin-top:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px">
+      <span style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--tx2)">Ficha del producto · sale en el PDF</span>
+      <span id="prf-st-${k}" style="font-size:11px;color:var(--tx3)">${f.titulo?fichaEsc(f.titulo.slice(0,70)):''}</span></div>
+    <div style="display:flex;gap:6px"><input class="fc" id="prf-url-${k}" value="${fichaEsc(f.url)}" placeholder="Pegá el link del producto (Amazon, Alibaba, Mercado Libre, web del fabricante…)" oninput="fichaGet(${k}).url=this.value.trim()" onkeydown="if(event.key==='Enter'){event.preventDefault();fichaExtraer(${k})}">
+      <button type="button" class="btn bp bs" id="prf-btn-${k}" style="white-space:nowrap;flex:none" onclick="fichaExtraer(${k})">🔍 Extraer</button></div>
+    ${thumbs}
+    <div style="font-size:11px;color:var(--tx3);margin:9px 0 5px">Características (una por renglón, "Nombre: valor"). Podés editarlas.</div>
+    <textarea class="fc" rows="4" style="resize:vertical" oninput="fichaGet(${k}).caracts=this.value">${fichaEsc(f.caracts)}</textarea>
+    ${hay?`<div style="text-align:right;margin-top:6px"><button type="button" class="btn bg2 bs" onclick="fichaBorrar(${k})">Quitar ficha</button></div>`:''}
+  </div>`;
+}
+function renderFicha(k){const el=$('prf-'+k);if(el)el.innerHTML=fichaHTML(k);}
+function renderFichas(){renderFicha(0);presProds.forEach((_,i)=>renderFicha(i+1));}
+function fichaBorrar(k){if(!confirm('¿Quitar la ficha de este producto?'))return;presFichas[k]=fichaVacia();renderFicha(k);}
+async function fichaLlamar(body){
+  const {data:{session}}=await sb.auth.getSession();
+  const r=await fetch(FICHA_FN,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(session?.access_token||'')},body:JSON.stringify(body)});
+  if(r.status===404)throw new Error('La función "extraer-producto" todavía no está publicada en Supabase.');
+  if(!r.ok)throw new Error('Error '+r.status+' al consultar la función.');
+  return r.json();
+}
+async function fichaExtraer(k){
+  const f=fichaGet(k);const inp=$('prf-url-'+k);if(inp)f.url=inp.value.trim();
+  if(!/^https?:\/\//i.test(f.url)){toast('Pegá un link que empiece con http:// o https://','er');return;}
+  const btn=$('prf-btn-'+k);if(btn){btn.disabled=true;btn.textContent='Leyendo…';}
+  setT('prf-st-'+k,'Leyendo el link…');
+  try{
+    const d=await fichaLlamar({url:f.url});
+    if(!d.ok)throw new Error(d.error||'No se pudo leer el link.');
+    f.titulo=d.titulo||'';f.imgs=d.imagenes||[];f.sel=[];f.data={};
+    f.caracts=(d.caracteristicas||[]).map(c=>c.k?c.k+': '+c.v:c.v).join('\n');
+    // Si el producto no tiene nombre, se completa con el título encontrado
+    if(f.titulo){if(k===0){if(!v('pr-producto').trim())setV('pr-producto',f.titulo.slice(0,120));}
+      else{const pr=presProds[k-1];if(pr&&!pr.nombre){pr.nombre=f.titulo.slice(0,120);renderPresProds();}}}
+    renderFicha(k);
+    for(const u of f.imgs.slice(0,2))await fichaCargarImg(k,u,true); // preselecciona las 2 primeras
+    renderFicha(k);
+    toast(`Ficha cargada: ${f.imgs.length} imagen(es), ${(d.caracteristicas||[]).length} característica(s)`);
+  }catch(e){setT('prf-st-'+k,'');toast(e.message+' Si el sitio no deja leerlo, probá con otro link del mismo producto.','er');}
+  finally{const b=$('prf-btn-'+k);if(b){b.disabled=false;b.textContent='🔍 Extraer';}}
+}
+// Achica la foto (máx. 900 px, JPEG) para que el presupuesto no pese de más
+function fichaReducir(src){return new Promise(res=>{const im=new Image();im.onload=()=>{const M=900,s=Math.min(1,M/Math.max(im.naturalWidth,im.naturalHeight));
+  const c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.naturalWidth*s));c.height=Math.max(1,Math.round(im.naturalHeight*s));
+  const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.82));};im.onerror=()=>res(null);im.src=src;});}
+async function fichaCargarImg(k,u,silencioso){
+  const f=fichaGet(k);if(f.sel.includes(u))return true;
+  if(f.sel.length>=FICHA_MAX_IMG){if(!silencioso)toast('Máximo '+FICHA_MAX_IMG+' imágenes por producto','er');return false;}
+  if(!f.data[u]){
+    if(u.startsWith('data:'))f.data[u]=u;
+    else{try{const d=await fichaLlamar({url:u,accion:'imagen'});const red=d.ok?await fichaReducir(d.data):null;if(!red)throw 0;f.data[u]=red;}
+      catch{if(!silencioso)toast('No se pudo descargar esa imagen; elegí otra','er');return false;}}
+  }
+  f.sel.push(u);return true;
+}
+async function fichaToggleImg(k,j){
+  const f=fichaGet(k),u=f.imgs[j];if(!u)return;
+  if(f.sel.includes(u))f.sel=f.sel.filter(x=>x!==u);else{setT('prf-st-'+k,'Descargando imagen…');await fichaCargarImg(k,u,false);setT('prf-st-'+k,f.titulo?f.titulo.slice(0,70):'');}
+  renderFicha(k);
+}
+// Para guardar en items_extra (tipo 'ficha') y para el PDF
+function fichaParaGuardar(f,k){
+  const imagenes=f.sel.map(u=>f.data[u]||(u.startsWith('data:')?u:null)).filter(Boolean);
+  const caracteristicas=String(f.caracts||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{const m=l.match(/^([^:：]{1,70})[:：]\s*(.+)$/);return m?{k:m[1].trim(),v:m[2].trim()}:{k:'',v:l};});
+  return{tipo:'ficha',idx:k,url:f.url||'',titulo:f.titulo||'',imagenes,caracteristicas};
+}
+function fichasGuardar(){return presFichas.map((f,k)=>f?fichaParaGuardar(f,k):null).filter(x=>x&&(x.url||x.imagenes.length||x.caracteristicas.length));}
+function fichasCargar(items){
+  presFichas=[];
+  (items||[]).filter(x=>x.tipo==='ficha').forEach(x=>{const imgs=x.imagenes||[];presFichas[x.idx]={url:x.url||'',titulo:x.titulo||'',imgs:imgs.slice(),sel:imgs.slice(),data:{},
+    caracts:(x.caracteristicas||[]).map(c=>c.k?c.k+': '+c.v:c.v).join('\n')};});
+}
 function renderPresProds(){
   const cont=$('pr-prods-extra');if(!cont)return;
   cont.innerHTML=presProds.map((pr,i)=>`
@@ -1882,8 +1967,10 @@ function renderPresProds(){
         <div class="fgrp"><label class="flbl">Monto para el cálculo de impuestos USD (vacío = Precio)</label><input type="number" class="fc" value="${pr.monto_imp??''}" placeholder="0.00" oninput="presProdSet(${i},'monto_imp',this.value)"></div>
         <div id="prx-ddp-${i}" class="fsp" style="display:none;font-size:11px;color:var(--tx3);margin-top:2px"></div>
       </div>
+      <div id="prf-${i+1}"></div>
       ${presProdTribHTML(pr,i)}
     </div>`).join('');
+  renderFichas();
 }
 function presProdTribHTML(pr,i){
   const bu=v('pr-tipo_cli')!=='no_importador'&&v('pr-destino')==='bien_uso';
@@ -2253,7 +2340,7 @@ async function gPres(){
     derechos:presCalc.tot.der||0,tasa_est:presCalc.tot.est||0,iva_aduana:presCalc.tot.iva||0,iva_adicional:presCalc.tot.ivaad||0,ganancias:presCalc.tot.gan||0,iibb:presCalc.tot.iibb||0,arancel_sim:10, // totales de todos los productos
     banc_comision:nv('pr-banc_comision'),banc_swift:nv('pr-banc_swift'),banc_exterior:nv('pr-banc_exterior'),bancario:nv('pr-banc_total'),
     honorarios,desp_gastos:nv('pr-desp_gastos'),desp_digit:nv('pr-desp_digit'),desp_otros:nv('pr-desp_otros'),
-    otros_costos:costos,items_extra:presProds.map(pr=>({...pr,tipo:'producto'})).concat([{tipo:'resumen',items:presCalc.resumen,alis_iva:presCalc.alisIva}]),ddp_total:nv('pr-ddp_total'),
+    otros_costos:costos,items_extra:presProds.map(pr=>({...pr,tipo:'producto'})).concat([{tipo:'resumen',items:presCalc.resumen,alis_iva:presCalc.alisIva}],fichasGuardar()),ddp_total:nv('pr-ddp_total'),
     total_usd:nv('pr-total_usd'),costo_final:nv('pr-costo_final'),
     es_importador:v('pr-tipo_cli')!=='no_importador',
     destino:v('pr-destino')||'comercializable',
@@ -2396,7 +2483,6 @@ function ecxDeckHtml(d){
   ${ecxTop('Análisis de importación · N° '+(d.numero||'—'))}
   <div class="cover-body">
     ${tags?`<span class="pill">${ecxE(tags)}</span>`:''}
-    <p class="eyebrow">Presupuesto de importación</p>
     <h1${h1s}>${h1}</h1>
     ${incluye}
     <div class="cover-meta">
@@ -2441,7 +2527,7 @@ function ecxDeckHtml(d){
   ECX_GRUPOS.forEach(([key,nombre,cl])=>{
     const g=conceptos.filter(c=>ecxGrupo(c.concepto)===key);if(!g.length)return;
     rows.push(`<tr class="grp"><td colspan="2"><span class="sw ${cl}"></span>${nombre}</td></tr>`);
-    g.forEach(c=>rows.push(`<tr class="item"><td>${ecxE(c.concepto).replace(/\*/g,'<b style="color:var(--cyan)">*</b>')}</td><td class="r">${ecxUsd(c.importe)}</td></tr>`));
+    g.forEach(c=>rows.push(`<tr class="item"><td>${ecxE(c.concepto).replace(/\*/g,'<b style="color:var(--cyan)">*</b>')}</td><td class="r"${c.recup?' style="color:#FF6B6B"':''}>${ecxUsd(c.importe)}</td></tr>`));
   });
   const dense='dense'+(rows.length>20?' xdense':'');
   S.push(`<section class="slide ${dense}">
@@ -2569,10 +2655,408 @@ function ecxImprimir(html,titulo){
   if(doc.readyState==='complete')listo();else fr.onload=listo;
 }
 
+const ECX_LOGO_COLOR="data:image/png;base64,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";
+// ══ PDF vertical A4 estilo factura (claro) — mismos datos "d" que el deck E-COMEX ══
+// variante: 'compacto' (flujo continuo, 1–2 hojas) | 'secciones' (una hoja por sección)
+const ECX_DOC_CSS=`
+:root{--ink:#07111A;--ink2:#0E2A33;--cyan:#3AB0CB;--cyan-d:#1B8BA5;--cyan-soft:#E6F5F9;--steel:#1F7A8C;--mist:#DCE6E9;--slate:#4E5B62;--amber:#C9821C;
+  --text:#0E1A20;--text2:#3D4B52;--text3:#6B7A82;--line:#DDE5E8;--row:#F5F8F9;--paper:#FFFFFF}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--text);font-family:'Inter',system-ui,sans-serif;font-size:10pt;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+/* Márgenes laterales en el body (no en @page) para que la banda llegue al borde sin que Chrome achique la hoja */
+@page{size:A4;margin:14mm 0 16mm;
+  @bottom-left{content:"E-COMEX · info@e-comex.com.ar · www.e-comex.com.ar · +54 9 11 2626-8316";font-family:Inter,sans-serif;font-size:7.5pt;color:#6B7A82;padding-left:14mm}
+  @bottom-right{content:"Página " counter(page) " de " counter(pages);font-family:Inter,sans-serif;font-size:7.5pt;color:#6B7A82;padding-right:14mm}}
+@page:first{margin-top:0}
+body{padding:0 14mm}
+.h-band{margin:0 -14mm 0;padding:11mm 14mm 9mm;background:radial-gradient(420px 220px at 100% 0%,rgba(38,128,148,.45),transparent 70%),linear-gradient(160deg,#0A1A20,#07111A 60%,#060F13);color:#fff;display:flex;justify-content:space-between;align-items:flex-end;position:relative;overflow:hidden}
+.h-band img{height:22px;display:block;margin-bottom:12px}
+.h-band .sub{font-size:8pt;color:rgba(255,255,255,.7);letter-spacing:.02em;line-height:1.5}
+.h-band .doc{text-align:right}
+.h-band .doc .t{font-family:Manrope,Inter,sans-serif;font-weight:800;font-size:17pt;letter-spacing:-.02em}
+.h-band .doc .n{font-size:9pt;color:rgba(255,255,255,.78);margin-top:3px}
+.h-band .doc .n b{color:#6CCBE0;font-weight:700}
+.h-band svg{position:absolute;inset:0;width:100%;height:100%;opacity:.55;pointer-events:none}
+.h-band>*:not(svg){position:relative}
+.mini{display:flex;justify-content:space-between;align-items:center;padding-bottom:7px;border-bottom:2px solid var(--cyan);margin-bottom:16px}
+.mini img{height:16px}.mini span{font-size:8pt;color:var(--text3);letter-spacing:.08em;text-transform:uppercase}
+.sec{margin-top:16px;break-inside:avoid}
+.sec.flow{break-inside:auto}
+.sec-t{break-after:avoid}
+.sec-t{display:flex;align-items:center;gap:8px;font-size:8pt;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--cyan-d);margin-bottom:8px}
+.sec-t::after{content:"";flex:1;height:1px;background:var(--line)}
+h1.prod{font-family:Manrope,Inter,sans-serif;font-weight:800;font-size:20pt;letter-spacing:-.025em;margin:16px 0 2px;line-height:1.15}
+.incl{font-size:8.5pt;color:var(--text3);margin:0}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.grid>div{padding:8px 11px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.grid>div:nth-child(3n){border-right:0}
+.grid>div.last{border-bottom:0}
+.lb{font-size:7pt;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin-bottom:3px}
+.vl{font-size:10pt;font-weight:600;color:var(--text)}
+.tbc{color:var(--amber);font-style:italic;font-weight:500}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.kpi{border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.kpi .v{font-family:Manrope,Inter,sans-serif;font-weight:800;font-size:14pt;letter-spacing:-.01em;margin-top:2px}
+.kpi .h{font-size:7.5pt;color:var(--text3);margin-top:2px}
+.kpi.minus .v{color:#C62828}
+.kpi.hero{background:var(--cyan);border-color:var(--cyan);color:#031419}
+.kpi.hero .lb,.kpi.hero .h{color:rgba(3,20,25,.8)}
+.bar{display:flex;height:16px;border-radius:5px;overflow:hidden;gap:2px;margin:10px 0 7px}
+.bar span{display:flex;align-items:center;padding-left:6px;font-size:7pt;font-weight:700}
+.legend{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:8pt;color:var(--text2)}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
+.c1{background:var(--mist);color:#0B1A1E}.c2{background:var(--steel);color:#fff}.c3{background:var(--cyan);color:#031419}.c4{background:var(--slate);color:#fff}
+table{width:100%;border-collapse:collapse}
+th{font-size:7pt;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#fff;background:var(--ink2);text-align:left;padding:7px 10px}
+th:first-child{border-radius:6px 0 0 0}th:last-child{border-radius:0 6px 0 0}
+th.r,td.r{text-align:right}
+td{padding:5px 10px;font-size:9pt;color:var(--text2);border-bottom:1px solid var(--line)}
+td.r{color:var(--text);font-variant-numeric:tabular-nums}
+tr{break-inside:avoid}
+tr.grp td{background:var(--row);font-size:7.5pt;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text);padding-top:6px;padding-bottom:6px}
+tr.grp td i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:7px}
+tr.sub td{font-weight:600;color:var(--text);font-size:8.5pt}
+tr.sub td:first-child{text-align:right;color:var(--text3);font-weight:500}
+tfoot td{font-weight:700;color:var(--text);border-bottom:0;border-top:1.5px solid var(--text)}
+.tot-wrap{display:flex;justify-content:space-between;gap:16px;margin-top:12px;break-inside:avoid}
+.tot-wrap .pa{flex:1;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:8pt;color:var(--text2);line-height:1.5}
+.tot{width:300px}
+.tot .rw{display:flex;justify-content:space-between;padding:6px 2px;border-bottom:1px solid var(--line);font-size:9.5pt}
+.tot .rw b{font-variant-numeric:tabular-nums}
+.tot .rw.m b{color:#C62828}
+.tot .fin{margin-top:8px;background:var(--cyan);color:#031419;border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:baseline}
+.tot .fin span{font-weight:700;font-size:9pt;letter-spacing:.06em;text-transform:uppercase}
+.tot .fin b{font-family:Manrope,Inter,sans-serif;font-weight:800;font-size:17pt}
+.items td:first-child{color:var(--text);font-weight:600}
+.items td.u{color:var(--cyan-d);font-weight:700}
+.steps{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.step{border:1px solid var(--line);border-radius:8px;padding:11px 13px;display:flex;flex-direction:column}
+.step .hd{display:flex;align-items:center;gap:8px;font-family:Manrope,Inter,sans-serif;font-weight:800;font-size:11pt}
+.step .hd i{font-style:normal;width:20px;height:20px;border-radius:50%;background:var(--cyan);color:#031419;display:grid;place-items:center;font-size:8.5pt}
+.step p{font-size:8.5pt;color:var(--text2);margin:6px 0 8px;line-height:1.45;flex:1}
+.step .fx{display:inline-block;font-size:7.5pt;color:var(--text2);background:var(--cyan-soft);border-radius:999px;padding:3px 9px;align-self:flex-start}
+.step .am{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid var(--line);margin-top:9px;padding-top:8px}
+.step .am span{font-size:7.5pt;color:var(--text3);text-transform:uppercase;letter-spacing:.1em}
+.step .am b{font-family:Manrope,Inter,sans-serif;font-weight:800;font-size:14pt}
+.notes{font-size:8pt;color:var(--text2);line-height:1.55;margin:0;padding-left:16px}
+.notes li{margin-bottom:2px}
+.callout{margin-top:9px;background:var(--cyan-soft);border-left:3px solid var(--cyan);border-radius:0 6px 6px 0;padding:8px 11px;font-size:8pt;color:var(--text2);line-height:1.5}
+.sign{display:flex;justify-content:space-between;align-items:flex-end;margin-top:18px;padding-top:12px;border-top:1px solid var(--line);font-size:8pt;color:var(--text3);break-inside:avoid}
+.sign b{display:block;font-family:Manrope,Inter,sans-serif;font-size:11pt;color:var(--text);font-weight:800;margin-bottom:2px}
+.pg{break-before:page}
+/* Variante compacta: más densa para que datos + desglose + totales entren en la hoja 1 */
+.cmp h1.prod{font-size:17pt;margin-top:12px}
+.cmp .sec{margin-top:11px}
+.cmp .grid>div{padding:6px 10px}
+.cmp .kpi{padding:7px 10px}.cmp .kpi .v{font-size:12.5pt}.cmp .kpi .h{display:none}
+.cmp .bar{height:12px;margin:7px 0 5px}.cmp .bar span{font-size:6.5pt}
+.cmp .legend{font-size:7.5pt;gap:2px 14px}
+.cmp td{padding:3.2px 10px;font-size:8.5pt}
+.cmp tr.grp td{padding-top:4px;padding-bottom:4px}
+.cmp tr.sub td{padding-top:3px;padding-bottom:3px}
+.cmp th{padding:5px 10px}
+.cmp .tot-wrap{margin-top:9px}
+.cmp .tot .rw{padding:4px 2px}
+.cmp .tot .fin{padding:8px 12px;margin-top:6px}
+/* Variante por secciones: hoja 1 tipo carátula */
+.sec-mode .cover1 h1.prod{font-size:28pt;margin-top:30px}
+.sec-mode .cover1 .incl{font-size:10pt;margin-top:4px}
+.sec-mode .cover1 .sec{margin-top:26px}
+.sec-mode .cover1 .grid>div{padding:12px 14px}.sec-mode .cover1 .vl{font-size:11.5pt}
+.sec-mode .cover1 .kpis{grid-template-columns:1fr 1fr;gap:12px}
+.sec-mode .cover1 .kpi{padding:16px 18px}.sec-mode .cover1 .kpi .v{font-size:22pt}.sec-mode .cover1 .kpi .h{font-size:8.5pt}
+.sec-mode .cover1 .bar{height:26px;margin-top:16px}.sec-mode .cover1 .bar span{font-size:8.5pt}
+.sec-mode .cover1 .legend{display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;font-size:9.5pt}
+`;
+function ecxDocHtml(d,variante){
+  variante=variante||'compacto';
+  const conceptos=(d.conceptos||[]).filter(c=>c.importe!=null);
+  const total=d.total_erogacion!=null?d.total_erogacion:conceptos.reduce((a,c)=>a+c.importe,0);
+  const ded=d.deduccion||{},dedImp=ded.importe,final=d.costo_final,items=d.items||[];
+  const comp={prod:0,flete:0,trib:0,oper:0};
+  conceptos.forEach(c=>{const g=ecxGrupo(c.concepto),n=c.concepto.toLowerCase();if(g==='prod'&&(n.includes('flete')||n.includes('seguro')))comp.flete+=c.importe;else comp[g]+=c.importe;});
+  const pc=conceptos.find(c=>c.concepto.toLowerCase().startsWith('precio'));const producto=pc?pc.importe:null;
+  const transf=conceptos.filter(c=>c.concepto.toLowerCase().includes('transferencia')).reduce((a,c)=>a+c.importe,0);
+  const pago1=+((producto||0)+transf).toFixed(2),pago2=+(total-pago1).toFixed(2);
+  const estandar=['cotizados en dólares','tipo de cambio informal','tipo de cambio oficial','pagos se realizan','se abona el precio','una vez que la carga'];
+  const extras=(d.observaciones||[]).filter(o=>!estandar.some(k=>o.toLowerCase().includes(k))).map(o=>o.replace(/^\s*(\d+[.)-]|[•\-])\s*/,''));
+  const asteriscos=conceptos.filter(c=>c.concepto.includes('*')).map(c=>c.concepto.replace(/\*/g,'').trim());
+  const deducLabel=(ded.concepto||'(−) IVA').replace('-','−');
+  const esIva=/iva/i.test(deducLabel)&&!/tributos/i.test(deducLabel);
+  const E=ecxE,U=ecxUsd,V=ecxVal;
+
+  // Mini universo de puntos para la banda del encabezado (determinístico)
+  const rng=(a=>()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;})(parseInt(String(d.numero||'1').replace(/\D/g,''))||1);
+  let dots='';for(let k=0;k<70;k++){const x=(.35+rng()*.65)*800,y=rng()*140,r=.5+rng()*1.6,o=.15+rng()*.55;dots+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}" fill="${rng()<.6?'#5BC0D4':'#fff'}" opacity="${o.toFixed(2)}"/>`;}
+  const band=`<div class="h-band"><svg viewBox="0 0 800 140" preserveAspectRatio="xMidYMid slice">${dots}</svg>
+    <div><img src="${ECX_LOGO_WHITE}" alt="E-COMEX"><div class="sub">Av. Pte. Julio A. Roca 771, 6° Piso Of. 10, CABA<br>info@e-comex.com.ar · www.e-comex.com.ar</div></div>
+    <div class="doc"><div class="t">Análisis de importación</div><div class="n">N° <b>${E(d.numero||'—')}</b> · ${E(d.fecha||'')}</div></div></div>`;
+  const mini=t=>`<div class="mini"><img src="${ECX_LOGO_COLOR}" alt="E-COMEX"><span>${E(t)} · N° ${E(d.numero||'—')}</span></div>`;
+  const sec=(t,html,cls='')=>`<div class="sec ${cls}"><div class="sec-t">${t}</div>${html}</div>`;
+
+  // Bloques
+  const incluye=items.length>1?`<p class="incl">Incluye ${items.length} ítems: ${items.map(i=>E(i.item)).join(' · ')}</p>`:'';
+  const datos=`<h1 class="prod">${E(d.titulo||'')||ECX_TBC}</h1>${incluye}
+   <div class="sec"><div class="sec-t">Datos de la operación</div><div class="grid">
+    <div><div class="lb">Cliente</div><div class="vl">${V(d.cliente)}</div></div>
+    <div><div class="lb">Rubro</div><div class="vl">${V(d.rubro)}</div></div>
+    <div><div class="lb">Posición arancelaria</div><div class="vl">${V(d.posicion_arancelaria)}</div></div>
+    <div class="last"><div class="lb">Cantidad</div><div class="vl">${V(d.cantidad)}</div></div>
+    <div class="last"><div class="lb">Incoterm</div><div class="vl">${V(d.incoterm)}</div></div>
+    <div class="last"><div class="lb">Condición</div><div class="vl">${V(d.condicion)}</div></div>
+   </div></div>`;
+  const parts=[['prod','c1'],['flete','c2'],['trib','c3'],['oper','c4']];
+  const resumen=sec('Resumen',`<div class="kpis">
+    <div class="kpi"><div class="lb">Precio ${E(d.incoterm||'')}</div><div class="v">${U(producto)}</div><div class="h">Valor en origen · USD</div></div>
+    <div class="kpi"><div class="lb">Total erogación</div><div class="v">${U(total)}</div><div class="h">Todo lo que se paga · USD</div></div>
+    <div class="kpi minus"><div class="lb">${E(esIva?'IVA recuperable':'Tributos recuperables')}</div><div class="v">${U(dedImp)}</div><div class="h">Crédito fiscal · USD</div></div>
+    <div class="kpi hero"><div class="lb">Costo final</div><div class="v">${U(final)}</div><div class="h">Puesto en destino · USD</div></div></div>
+   <div class="bar">${parts.filter(([k])=>comp[k]>0).map(([k,cl])=>`<span class="${cl}" style="flex:${(comp[k]/total*100).toFixed(2)}">${comp[k]/total>.07?ecxPct(comp[k]/total*100):''}</span>`).join('')}</div>
+   <div class="legend">${parts.filter(([k])=>comp[k]>0).map(([k,cl])=>`<span><i class="${cl}"></i>${ECX_COMP_LABEL[k]} · <b>USD ${U(comp[k])}</b></span>`).join('')}</div>`);
+  let filas='';
+  ECX_GRUPOS.forEach(([key,nombre,cl])=>{const g=conceptos.filter(c=>ecxGrupo(c.concepto)===key);if(!g.length)return;
+    filas+=`<tr class="grp"><td colspan="2"><i class="${cl}"></i>${nombre}</td></tr>`;
+    g.forEach(c=>filas+=`<tr><td>${E(c.concepto).replace(/\*/g,'<b style="color:var(--cyan-d)">*</b>')}</td><td class="r"${c.recup?' style="color:#C62828"':''}>${U(c.importe)}</td></tr>`);
+    filas+=`<tr class="sub"><td>Subtotal</td><td class="r">${U(g.reduce((a,c)=>a+c.importe,0))}</td></tr>`;});
+  const desglose=sec('Desglose de costos · USD',`<table><thead><tr><th>Concepto</th><th class="r">Importe USD</th></tr></thead><tbody>${filas}</tbody></table>
+   <div class="tot-wrap"><div class="pa">${esIva?'El IVA se computa como crédito fiscal y se resta del total erogado.':'Los tributos recuperables (IVA, percepciones e IVA de servicios) se computan como crédito fiscal y se restan del total erogado.'} Importes en dólares estadounidenses.</div>
+    <div class="tot"><div class="rw"><span>Total erogación</span><b>${U(total)}</b></div><div class="rw m"><span>${E(deducLabel)}</span><b>${U(dedImp)}</b></div>
+    <div class="fin"><span>Costo final USD</span><b>${U(final)}</b></div></div></div>`,'flow');
+  const tq=items.reduce((a,i)=>a+(i.cantidad||0),0),tp=items.reduce((a,i)=>a+(i.precio_exw||0),0),tf=items.reduce((a,i)=>a+(i.costo_final||0),0);
+  const porItem=items.length?sec('Resumen por ítem',`<table class="items"><thead><tr><th>Ítem</th><th class="r">Cantidad</th><th class="r">Precio USD ${E(d.incoterm||'')}</th><th class="r">Costo final USD</th><th class="r">Costo unit. USD</th></tr></thead>
+    <tbody>${items.map(i=>`<tr><td>${E(i.item)}</td><td class="r">${ecxUsdShort(i.cantidad)}</td><td class="r">${U(i.precio_exw)}</td><td class="r">${U(i.costo_final)}</td><td class="r u">${U(i.costo_unitario)}</td></tr>`).join('')}</tbody>
+    <tfoot><tr><td>Total</td><td class="r">${ecxUsdShort(tq)}</td><td class="r">${U(tp)}</td><td class="r">${U(tf)}</td><td class="r"></td></tr></tfoot></table>`,'flow'):'';
+  let nota=asteriscos.length?`Se abonan a tipo de cambio blue o informal los ítems marcados con <b>*</b>: ${E(asteriscos.join(', '))}. `:'';
+  nota+=`Los montos por etapa se estiman a partir del desglose y suman el total erogado (USD ${U(total)}).`;
+  const pagos=sec('Esquema de pagos',`<div class="steps">
+    <div class="step"><div class="hd"><i>1</i>Pago inicial, anticipado</div><p>Precio del producto más los gastos bancarios, para transferir el monto al proveedor en origen.</p><span class="fx">Tipo de cambio blue / informal</span><div class="am"><span>Estimado</span><b>USD ${U(pago1)}</b></div></div>
+    <div class="step"><div class="hd"><i>2</i>Saldo, con la carga en el país</div><p>Una vez que la mercadería llega, se abona el resto según este análisis, en pesos por transferencia bancaria.</p><span class="fx">Tipo de cambio oficial vendedor · BNA</span><div class="am"><span>Estimado</span><b>USD ${U(pago2)}</b></div></div></div>
+   <div class="callout">${nota}</div>`);
+  const obs=sec('Observaciones',`<ul class="notes"><li>Todos los gastos son cotizados en dólares estadounidenses.</li>${extras.map(x=>`<li>${E(x)}</li>`).join('')}</ul>`);
+  const firma=`<div class="sign"><div><b>E-COMEX</b>Importá sin ser importador · +20 años en comercio exterior</div><div style="text-align:right">WhatsApp +54 9 11 2626-8316<br>info@e-comex.com.ar · www.e-comex.com.ar</div></div>`;
+
+  const body=variante==='secciones'
+    ? '<div class="cover1">'+band+datos+resumen+'</div>'
+      +`<div class="pg">${mini('Desglose de costos')}</div>`+desglose
+      +`<div class="pg">${mini('Ítems y pagos')}</div>`+porItem+pagos+obs+firma
+    : band+datos+resumen+desglose+porItem+pagos+obs+firma;
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>${E(d.archivo||('E-COMEX · Análisis de importación '+(d.numero||'')))}</title>
+<style>${ECX_FONTS_CSS}
+${ECX_DOC_CSS}</style></head><body class="${variante==='secciones'?'sec-mode':'cmp'}">${body}</body></html>`;
+}
+
+// ══ PDF A4 estilo factura (referencia: factura comercial con grilla) — identidad E-COMEX ══
+const ECX_FACT_CSS=`
+:root{--ink:#07111A;--ink2:#0E2A33;--cyan:#3AB0CB;--cyan-d:#1B8BA5;--cyan-soft:#E8F5F8;--line:#000;--hair:#000;--text:#0E1A20;--text2:#3D4B52;--text3:#6B7A82;--shade:#EEF2F3;--amber:#C9821C}
+*{box-sizing:border-box}
+html,body{margin:0;background:#fff;color:var(--text);font-family:'Inter',Arial,sans-serif;font-size:8.5pt;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+@page{size:A4;margin:9mm 10mm 12mm;
+  @bottom-center{content:"Análisis de importación · Documento no válido como factura";font-family:Inter,Arial,sans-serif;font-size:7.5pt;font-weight:700;color:#0E1A20}
+  @bottom-right{content:"Página " counter(page) " de " counter(pages);font-family:Inter,Arial,sans-serif;font-size:7.5pt;font-weight:700;color:#0E1A20}}
+.wrap{display:flex;flex-direction:column;min-height:275mm;margin:0 1.5px} /* margen mínimo: evita que el borde derecho quede cortado por el límite de impresión */
+/* Encabezado */
+.hdr{display:flex;border:1px solid var(--line)}
+.hdr .logo{width:52mm;background:radial-gradient(160px 90px at 100% 0%,rgba(38,128,148,.5),transparent 70%),var(--ink);display:flex;flex-direction:column;justify-content:center;align-items:center;padding:10px 12px;gap:7px}
+.hdr .logo img{width:100%;max-width:150px}
+.hdr .logo span{font-size:6.5pt;letter-spacing:.22em;text-transform:uppercase;color:#6CCBE0;font-weight:700}
+.hdr .info{flex:1;padding:10px 12px;display:flex;flex-direction:column;justify-content:center}
+.hdr .addr{font-family:Manrope,Inter,sans-serif;font-weight:800;font-size:12.5pt;text-align:center;letter-spacing:-.01em}
+.hdr .boxes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0}
+.hdr .bx{min-height:16mm}
+.hdr .bx{display:flex;align-items:stretch;border:1px solid var(--line);color:inherit;text-decoration:none}
+.hdr .bx i{font-style:normal;background:var(--ink2);color:#fff;font-size:6pt;font-weight:700;letter-spacing:.08em;writing-mode:vertical-rl;transform:rotate(180deg);padding:3px 2px;text-align:center}
+.hdr .bx b{flex:1;display:flex;align-items:center;justify-content:center;font-family:Manrope,Inter,sans-serif;font-weight:800;font-size:9.5pt;padding:5px 6px;white-space:nowrap}
+.hdr .inq{border-top:1px solid var(--line);padding-top:4px;font-size:7.5pt;text-align:center}
+.hdr .inq b{font-style:italic}
+.tag{display:flex;align-items:center;gap:10px;margin:3px 0 0}
+.tag em{font-family:Manrope,Inter,sans-serif;font-style:italic;font-size:9pt;color:var(--text2);white-space:nowrap}
+.tag .rule{flex:1;height:5px;background:var(--ink)}
+.tag strong{font-family:Manrope,Inter,sans-serif;font-weight:800;font-size:12pt;white-space:nowrap}
+.tag .rule.s{flex:0 0 40px}
+/* Nº y partes */
+.nro{display:flex;justify-content:flex-end;align-items:baseline;gap:8px;margin:6px 4px 5px}
+.nro span{font-family:Manrope,Inter,sans-serif;font-weight:800;font-size:13pt}
+.nro b{font-size:12pt;font-weight:500;color:var(--text2)}
+.partes{display:grid;grid-template-columns:1fr 1fr;gap:20px;padding:14px 6px 22px;justify-items:center}
+.pt{display:flex;gap:8px}
+.pt .k{text-align:right;color:var(--text2);font-size:10pt}
+.pt .v{font-weight:700;text-transform:uppercase;line-height:1.45;font-size:10.5pt}
+.pt .v small{display:block;font-weight:500;text-transform:none;color:var(--text2);font-size:8.8pt}
+.tbc{color:var(--amber);font-style:italic;font-weight:500;text-transform:none}
+/* Fila de datos */
+.meta{width:100%;border-collapse:collapse;table-layout:fixed}
+.meta td{border:1px solid var(--line);text-align:center;padding:3px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta tr:last-child td{border-bottom:0}
+.meta td:last-child{border-right:1px solid var(--line)}
+.meta .l{font-weight:700;font-size:7.5pt;color:var(--text)}
+.meta .x{font-size:8pt;color:var(--text2);font-weight:400}
+/* Tabla principal */
+.main{border:1px solid var(--line);flex:1;display:flex;flex-direction:column;position:relative}
+/* Líneas verticales del cuadro principal: una sola capa de arriba a abajo, mismo grosor en todo el alto */
+.main .cols{position:absolute;inset:0;display:grid;grid-template-columns:14mm 1fr 34mm 32mm;pointer-events:none}
+.main .cols div{border-right:1px solid var(--line)}
+.main .cols div:last-child{border-right:0}
+.main table.mt{position:relative;table-layout:fixed}
+.main table.mt td{border-right:0}
+.main table.mt th{border-right:1px solid var(--line)}
+.main table.mt th:last-child{border-right:0}
+table{width:100%;border-collapse:collapse}
+th{background:var(--ink);color:#fff;font-size:7.5pt;font-weight:700;padding:5px 6px;border-right:1px solid var(--line);text-align:center}
+th:last-child{border-right:0}
+td{padding:2.2px 7px;font-size:8.2pt;border-right:1px solid var(--line);vertical-align:top}
+td:last-child{border-right:0}
+td.r{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+td.c{text-align:center;font-weight:700}
+td.d{font-weight:700;text-transform:uppercase}
+tr.grp td{padding-top:5px;font-size:7pt;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--cyan-d)}
+tr.sub td{font-size:7.5pt;color:var(--text2);padding-bottom:3px}
+tr.sub td.r{border-top:1px solid var(--hair);color:var(--text)}
+.fill{flex:1;display:flex}
+.fill div{border-right:1px solid var(--line)}
+.obsf{margin-top:6px;border:1px solid var(--line);break-inside:avoid}
+.obs-t{background:var(--ink);color:#fff;font-size:7.5pt;font-weight:700;padding:5px 10px}
+.obsf .notes{background:var(--shade)}
+.notes{padding:6px 10px 7px}
+.notes .remit{font-weight:700;font-style:italic;font-size:9pt;margin-bottom:6px}
+.notes .pn{font-weight:700;font-style:italic;margin:4px 0 2px}
+.notes p{margin:0;font-weight:700;font-size:7.5pt;line-height:1.4}
+/* Ítems */
+.it{margin-top:6px;border:1px solid var(--line);break-inside:avoid}
+.it td{border-bottom:1px solid var(--hair)}
+.it tr:last-child td{border-bottom:0}
+.it tfoot td{border-top:1px solid var(--line);font-weight:700}
+/* Pie: pagos + totales */
+.bottom{display:flex;margin-top:6px;border:1px solid var(--line);break-inside:avoid}
+.pay{flex:1;border-right:1px solid var(--line);display:flex;flex-direction:column}
+.pay table td{border-bottom:1px solid var(--line);background:var(--shade)}
+.pay .hint{flex:1;background:repeating-linear-gradient(0deg,var(--shade) 0 15px,#fff 15px 16px);padding:6px 8px;font-size:7.5pt;color:var(--text2);line-height:1.5}
+.tots{width:72mm;display:flex;flex-direction:column}
+.tots .rw{display:flex;justify-content:space-between;padding:3.5px 8px;font-weight:700;font-size:8.3pt}
+.tots .rw span:last-child{font-variant-numeric:tabular-nums}
+.tots .sp{flex:1}
+.tot-h{background:var(--ink);color:#fff;font-size:7.5pt;font-weight:700;padding:5px 8px;text-align:center}
+.tots .end .rw{padding:5px 8px}
+.tots .fin{padding:7px 8px!important}
+.tots .fin{background:var(--cyan);color:#031419;font-size:10.5pt}
+.tots .m span:last-child{color:#C62828}
+td.r.rec{color:#C62828}
+/* Hoja de fichas de producto */
+.fpg{break-before:page;margin:0 1.5px}
+.fhdr{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line)}
+.fhdr .lg{background:radial-gradient(160px 90px at 100% 0%,rgba(38,128,148,.5),transparent 70%),var(--ink);padding:9px 14px;width:52mm;display:flex;justify-content:center}
+.fhdr .lg img{height:18px}
+.fhdr .tt{flex:1;text-align:center;font-family:Manrope,Inter,sans-serif;font-weight:800;font-size:12pt}
+.fhdr .nn{padding:0 12px;font-size:8.5pt;color:var(--text2)}
+.fic{margin-top:10px;border:1px solid var(--line);break-inside:avoid}
+.fic-t{background:var(--ink);color:#fff;padding:6px 10px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.fic-t b{font-size:9.5pt;text-transform:uppercase}
+.fic-t span{font-size:8pt;color:rgba(255,255,255,.75);flex:1}
+.fic-t a{font-size:8pt;color:#6CCBE0;text-decoration:none;font-weight:700;white-space:nowrap}
+.fic-imgs{display:grid;gap:0;border-bottom:1px solid var(--line)}
+.fic-imgs.n1{grid-template-columns:1fr}.fic-imgs.n2{grid-template-columns:1fr 1fr}.fic-imgs.n3{grid-template-columns:repeat(3,1fr)}.fic-imgs.n4{grid-template-columns:repeat(4,1fr)}
+.fic-imgs div{height:52mm;display:flex;align-items:center;justify-content:center;padding:6px;border-right:1px solid var(--line);background:#fff}
+.fic-imgs div:last-child{border-right:0}
+.fic-imgs.n1 div{height:75mm}
+.fic-imgs img{max-width:100%;max-height:100%;object-fit:contain}
+.fic-c td{border-bottom:1px solid var(--line);padding:3.5px 10px;font-size:8.5pt;vertical-align:top}
+.fic-c tr:last-child td{border-bottom:0}
+.fic-c td.k{width:62mm;font-weight:700;background:var(--shade)}
+.fic-c td.full{font-weight:500}
+.fic-src{font-size:7pt;color:var(--text3);margin-top:6px}
+`;
+function ecxFacturaHtml(d){
+  const E=ecxE,U=ecxUsd,V=ecxVal;
+  const conceptos=(d.conceptos||[]).filter(c=>c.importe!=null);
+  const total=d.total_erogacion!=null?d.total_erogacion:conceptos.reduce((a,c)=>a+c.importe,0);
+  const ded=d.deduccion||{},dedImp=ded.importe,final=d.costo_final,items=d.items||[];
+  const deducLabel=(ded.concepto||'(−) IVA').replace('-','−');
+  const etapa=c=>{const n=c.concepto.toLowerCase();return (n.startsWith('precio')||n.includes('transferencia'))?1:2;};
+  const pago1=+conceptos.filter(c=>etapa(c)===1).reduce((a,c)=>a+c.importe,0).toFixed(2);
+  const pago2=+(total-pago1).toFixed(2);
+  const sub={};ECX_GRUPOS.forEach(([k])=>sub[k]=conceptos.filter(c=>ecxGrupo(c.concepto)===k).reduce((a,c)=>a+c.importe,0));
+  const estandar=['cotizados en dólares','tipo de cambio informal','tipo de cambio oficial','pagos se realizan','se abona el precio','una vez que la carga'];
+  const extras=(d.observaciones||[]).filter(o=>!estandar.some(k=>o.toLowerCase().includes(k))).map(o=>o.replace(/^\s*(\d+[.)-]|[•\-])\s*/,''));
+
+  let filas='';
+  ECX_GRUPOS.forEach(([key,nombre])=>{const g=conceptos.filter(c=>ecxGrupo(c.concepto)===key);if(!g.length)return;
+    filas+=`<tr class="grp"><td></td><td>${nombre}</td><td></td><td></td></tr>`;
+    g.forEach(c=>filas+=`<tr><td class="c">${etapa(c)}</td><td class="d">${E(c.concepto)}</td><td style="text-align:center;color:var(--text2)">${etapa(c)===1?'Blue / informal':'Oficial BNA'}</td><td class="r${c.recup?' rec':''}">USD ${U(c.importe)}</td></tr>`);
+    filas+=`<tr class="sub"><td></td><td style="text-align:right">Subtotal</td><td></td><td class="r">USD ${U(sub[key])}</td></tr>`;});
+
+  const itemsHtml=items.length?`<table class="it"><thead><tr><th style="width:16mm">Cantidad</th><th>Ítem</th><th style="width:30mm">Precio USD ${E(d.incoterm||'')}</th><th style="width:30mm">Costo final USD</th><th style="width:28mm">Costo unit. USD</th></tr></thead>
+    <tbody>${items.map(i=>`<tr><td class="c">${ecxUsdShort(i.cantidad)}</td><td class="d">${E(i.item)}</td><td class="r">USD ${U(i.precio_exw)}</td><td class="r">USD ${U(i.costo_final)}</td><td class="r" style="color:var(--cyan-d)">USD ${U(i.costo_unitario)}</td></tr>`).join('')}</tbody>
+    ${items.length>1?`<tfoot><tr><td class="c">${ecxUsdShort(items.reduce((a,i)=>a+(i.cantidad||0),0))}</td><td>TOTAL</td><td class="r">USD ${U(items.reduce((a,i)=>a+(i.precio_exw||0),0))}</td><td class="r">USD ${U(items.reduce((a,i)=>a+(i.costo_final||0),0))}</td><td></td></tr></tfoot>`:''}</table>`:'';
+
+  const body=`<div class="wrap">
+  <div class="hdr">
+    <div class="logo"><img src="${ECX_LOGO_WHITE}" alt="E-COMEX"><span>Comercio exterior</span></div>
+    <div class="info">
+      <div class="boxes">
+        <a class="bx" href="mailto:info@e-comex.com.ar"><i>EMAIL</i><b>info@e-comex.com.ar</b></a>
+        <a class="bx" href="https://wa.me/5491126268316"><i>WHATSAPP</i><b>+54 9 11 2626-8316</b></a>
+        <div class="bx"><i>DIRECCIÓN</i><b style="white-space:normal;text-align:center;font-size:8pt;line-height:1.25">Av. Pte. Julio A. Roca 771<br>6° Piso Of. 10, CABA</b></div>
+      </div>
+    </div>
+  </div>
+  <div class="tag"><div class="rule"></div><a href="https://www.e-comex.com.ar" style="color:inherit;text-decoration:none"><strong>www.e-comex.com.ar</strong></a><div class="rule s"></div></div>
+
+  <div class="partes">
+    <div class="pt"><div class="k">Cliente:</div><div class="v">${d.cliente?E(d.cliente):ECX_TBC}${d.cuit?`<small>CUIT ${E(d.cuit)}</small>`:''}<small>${E(d.condicion||'')}</small></div></div>
+    <div class="pt"><div class="k">Operación:</div><div class="v">${d.titulo?E(d.titulo):ECX_TBC}<small>${E([d.rubro,d.cantidad].filter(Boolean).join(' · '))}</small>${items.length>1?`<small>Incluye ${items.length} ítems</small>`:''}</div></div>
+  </div>
+
+  <table class="meta"><tr><td class="l">Fecha</td><td class="l">Análisis N°</td><td class="l">Incoterm</td><td class="l">Pos. arancelaria</td><td class="l">Moneda</td><td class="l">Rubro</td></tr><tr><td class="x">${E(d.fecha_dia||d.fecha||'—')}</td><td class="x">${E(d.numero||'—')}</td><td class="x">${V(d.incoterm)}</td><td class="x">${V(d.posicion_arancelaria)}</td><td class="x">USD</td><td class="x">${V(d.rubro)}</td></tr></table>
+  <div class="main">
+    <div class="cols"><div></div><div></div><div></div><div></div></div>
+    <table class="mt"><thead><tr><th style="width:14mm">Etapa</th><th>Concepto</th><th style="width:34mm">Tipo de cambio</th><th style="width:32mm">Importe USD</th></tr></thead>
+    <tbody>${filas}</tbody></table>
+  </div>
+  <div class="bottom">
+    <div class="pay">
+      <table><thead><tr><th style="text-align:left;padding-left:10px">Etapa de pago</th><th style="width:36mm">Tipo de cambio</th><th style="width:27mm">Importe USD</th></tr></thead>
+      <tbody><tr><td style="padding-left:10px;font-weight:700">1 · Pago inicial</td><td style="text-align:center">Blue / informal</td><td class="r">USD ${U(pago1)}</td></tr>
+      <tr><td style="padding-left:10px;font-weight:700">2 · Saldo</td><td style="text-align:center">Oficial vendedor BNA</td><td class="r">USD ${U(pago2)}</td></tr></tbody></table>
+      <div class="hint">Montos estimados según el desglose; suman el total erogado. ${/tributos/i.test(deducLabel)?'Los tributos recuperables (IVA, percepciones e IVA de servicios) se computan como crédito fiscal.':'El IVA se computa como crédito fiscal.'}</div>
+    </div>
+    <div class="tots">
+      <div class="end">
+        <div class="rw fin"><span>Total erogación:</span><span>USD ${U(total)}</span></div>
+        <div class="rw m"><span>${E(deducLabel)}:</span><span>${dedImp!=null?'−USD '+U(Math.abs(dedImp)):U(dedImp)}</span></div>
+        <div class="rw"><span>Costo final:</span><span>USD ${U(final)}</span></div>
+      </div>
+      <div class="sp"></div>
+    </div>
+  </div>
+  ${itemsHtml}
+    <div class="obsf">
+      <div class="obs-t">Observaciones</div>
+      <div class="notes">
+        <p>**** Todos los gastos están cotizados en dólares estadounidenses ****</p>
+        <p>**** Etapa 1: precio del producto + gastos bancarios, a tipo de cambio blue / informal, en forma anticipada ****</p>
+        <p>**** Etapa 2: resto del análisis con la carga en el país, a tipo de cambio oficial vendedor BNA, en pesos ****</p>
+        ${extras.map(x=>`<p>**** ${E(x)} ****</p>`).join('')}
+      </div>
+    </div>
+</div>`;
+  const fichas=(d.fichas||[]);
+  const fichasHtml=fichas.length?`<div class="fpg">
+    <div class="fhdr"><div class="lg"><img src="${ECX_LOGO_WHITE}" alt="E-COMEX"></div><div class="tt">Ficha${fichas.length>1?'s':''} del producto</div><div class="nn">Análisis N° ${E(d.numero||'—')}</div></div>
+    ${fichas.map(f=>{const im=(f.imagenes||[]).slice(0,4);const cs=f.caracteristicas||[];
+      return `<div class="fic"><div class="fic-t"><b>${E(f.producto)}</b><span>${f.titulo&&f.titulo.toLowerCase()!==String(f.producto).toLowerCase()?E(f.titulo):''}</span>${f.url?`<a href="${E(f.url)}">Ver producto ↗</a>`:''}</div>
+      ${im.length?`<div class="fic-imgs n${im.length}">${im.map(u=>`<div><img src="${E(u)}" alt=""></div>`).join('')}</div>`:''}
+      ${cs.length?`<table class="fic-c"><tbody>${cs.map(c=>c.k?`<tr><td class="k">${E(c.k)}</td><td>${E(c.v)}</td></tr>`:`<tr><td class="full" colspan="2">• ${E(c.v)}</td></tr>`).join('')}</tbody></table>`:''}</div>`;}).join('')}
+    <div class="fic-src">Imágenes y características tomadas del sitio del producto, a modo ilustrativo.</div>
+  </div>`:'';
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>${E(d.archivo||('E-COMEX · Análisis de importación '+(d.numero||'')))}</title>
+<style>${ECX_FONTS_CSS}
+${ECX_FACT_CSS}</style></head><body>${body}${fichasHtml}</body></html>`;
+}
+
 // ── EXPORTAR PDF (mismas hojas que el PowerPoint) ─────────
 // PresPdf imita la parte de la API de PptxGenJS que usa _doPPT y dibuja cada hoja
 // en HTML a escala real (13,333 × 7,5 pulgadas). Después abre la impresión del navegador
 // con el tamaño de hoja ya configurado → "Guardar como PDF".
+const ECX_FORMATO='factura'; // formato del botón 📄 Exportar PDF
 function exportPresPDF(i){
   const p=D.presupuestos[i];
   if(!p){toast('Presupuesto no encontrado','er');return;}
@@ -2767,7 +3251,7 @@ function _doPPT(i,modo){
   rows.push([hdr('Concepto'),hdr('Importe USD')]);
   let rIdx=0, ivaConceptos=0;
   const addR=(concepto,monto,recup,ivaC)=>{const bg=rIdx%2===0?WHT:BGSOFT;rIdx++;
-    ecxConceptos.push({concepto,importe:+(+monto||0).toFixed(2)});
+    ecxConceptos.push({concepto,importe:+(+monto||0).toFixed(2),recup:!!recup});
     ivaConceptos+=(ivaC||0);
     rows.push([
       {text:concepto,options:{fontFace:'Arial',fontSize:11,color:INK,fill:{color:bg}}},
@@ -2870,15 +3354,22 @@ function _doPPT(i,modo){
     const recupTot=+((p.total_usd||0)-(p.costo_final||0)).toFixed(2);
     const alis=(resGuardado.alis_iva||[p.ali_iva||0]);
     const d={
-      numero:p.nro||null, fecha:mes||null, rubro:p.rubro||null,
+      numero:p.nro||null, fecha:mes||null, rubro:p.rubro||null, cuit:p.cuit||null,
+      fecha_dia:p.fecha?p.fecha.split('-').reverse().join('/'):null,
       titulo:prodMayor.nombre||null, cliente:p.cliente||null, posicion_arancelaria:prodMayor.pos_aran||null,
       cantidad:qtyTotal+' unidades', incoterm:incoterms.join(' / '), condicion:tipoTxt,
       conceptos:ecxConceptos, total_erogacion:+(p.total_usd||0).toFixed(2),
       deduccion:{concepto:esImp?'(−) Tributos recuperables':('(−) IVA recuperable'+(alis.length>1?'':' ('+fAli(alis[0])+'%)')),importe:-recupTot},
       costo_final:+(p.costo_final||0).toFixed(2), items:ecxItems, unidad_items:'unidades', unidad_singular:'unidad',
-      observaciones:lines, archivo:fname.replace(/\.pptx$/i,'')
+      observaciones:lines, archivo:fname.replace(/\.pptx$/i,''),
+      fichas:(p.items_extra||[]).filter(x=>x.tipo==='ficha'&&((x.imagenes||[]).length||(x.caracteristicas||[]).length))
+        .sort((a,b)=>a.idx-b.idx).map(x=>({producto:(prods[x.idx]||{}).nombre||x.titulo||'Producto',titulo:x.titulo||'',url:x.url||'',imagenes:(x.imagenes||[]).slice(0,4),caracteristicas:x.caracteristicas||[]}))
     };
-    const r=ecxDeckHtml(d);
+    // Formato del PDF: 'factura' (A4 vertical) · 'deck' (6 slides oscuras) · 'a4' (A4 compacto) · 'a4sec' (A4 por secciones)
+    const r=ECX_FORMATO==='factura'?{html:ecxFacturaHtml(d),warns:[]}
+      :ECX_FORMATO==='a4'?{html:ecxDocHtml(d,'compacto'),warns:[]}
+      :ECX_FORMATO==='a4sec'?{html:ecxDocHtml(d,'secciones'),warns:[]}
+      :ecxDeckHtml(d);
     if(r.warns.length)console.warn('E-COMEX PDF:',r.warns);
     ecxImprimir(r.html,d.archivo);
     toast('Elegí "Guardar como PDF" en la ventana de impresión');
@@ -3596,6 +4087,7 @@ function clearPdf(){
         <!-- 1.3 -->
         <div id="pr-ddp-principal" class="fsp" style="display:none;font-size:11px;color:var(--tx3);margin-top:2px">DDP prorrateado producto principal: USD 0,00</div>
       </div>
+      <div id="prf-0"></div>
     <!-- TRIBUTOS ADUANEROS — ALÍCUOTAS → MONTOS AUTO -->
       <div id="pr-tributos-box" style="background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.15);border-radius:7px;padding:11px;margin-top:10px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
