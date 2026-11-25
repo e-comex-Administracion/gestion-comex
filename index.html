@@ -1777,7 +1777,7 @@ function abrirNuevoPres(){
   editIdx=-1;editTabla='presupuestos';
   if($('pr-nro'))$('pr-nro').value=nextNroPres();
   if($('pr-fecha'))$('pr-fecha').value=new Date().toISOString().slice(0,10);
-  ['pr-cuit','pr-cliente','pr-rubro','pr-producto','pr-pos_aran','pr-precio_usd','pr-precio_eur','pr-monto_impuestos','pr-flete_informe','pr-tc_eur_usd','pr-flete_origen','pr-flete_flete','pr-flete_destino','pr-seguro_suma','pr-seguro_monto','pr-honorarios','pr-desp_gastos','pr-desp_digit','pr-desp_otros'].forEach(id=>{if($(id))$(id).value='';});
+  ['pr-cuit','pr-cliente','pr-rubro','pr-proveedor','pr-producto','pr-pos_aran','pr-precio_usd','pr-precio_eur','pr-monto_impuestos','pr-flete_informe','pr-tc_eur_usd','pr-flete_origen','pr-flete_flete','pr-flete_destino','pr-seguro_suma','pr-seguro_monto','pr-honorarios','pr-desp_gastos','pr-desp_digit','pr-desp_otros'].forEach(id=>{if($(id))$(id).value='';});
   setV('pr-seguro_prima','1');
   setV('pr-ali_derechos','0');setV('pr-ali_estadistica','3');setV('pr-ali_iva','21');setV('pr-ali_iva_ad','10');setV('pr-ali_ganancias','6');setV('pr-ali_iibb','3');
   setV('pr-banc_comision','6');setV('pr-banc_swift','50');setV('pr-banc_exterior','15');
@@ -1810,7 +1810,7 @@ function editarPres(i){
   if($('pr-arancel_sim'))$('pr-arancel_sim').value='10.00';
   togglePresDestino();
   presInitCostos(p.otros_costos||p.costos||[]);
-  presItems=[];presProds=(p.items_extra||[]).filter(x=>x.tipo==='producto').map(x=>({...presAliDefault(),...x}));fichasCargar(p.items_extra);renderPresProds();renderPresItems();setV('pr-ddp_total',p.ddp_total||'');setV('pr-tc_eur_usd','');tcEurManual=false;setT('pr-tc_eur_info','');actualizarDdp();
+  presItems=[];presProds=(p.items_extra||[]).filter(x=>x.tipo==='producto').map(x=>({...presAliDefault(),...x}));fichasCargar(p.items_extra);setV('pr-proveedor',((p.items_extra||[]).find(x=>x.tipo==='meta')||{}).proveedor||'');renderPresProds();renderPresItems();setV('pr-ddp_total',p.ddp_total||'');setV('pr-tc_eur_usd','');tcEurManual=false;setT('pr-tc_eur_info','');actualizarDdp();
   calcPres();
   oM('m-pres');
 }
@@ -2346,7 +2346,7 @@ async function gPres(){
     derechos:presCalc.tot.der||0,tasa_est:presCalc.tot.est||0,iva_aduana:presCalc.tot.iva||0,iva_adicional:presCalc.tot.ivaad||0,ganancias:presCalc.tot.gan||0,iibb:presCalc.tot.iibb||0,arancel_sim:10, // totales de todos los productos
     banc_comision:nv('pr-banc_comision'),banc_swift:nv('pr-banc_swift'),banc_exterior:nv('pr-banc_exterior'),bancario:nv('pr-banc_total'),
     honorarios,desp_gastos:nv('pr-desp_gastos'),desp_digit:nv('pr-desp_digit'),desp_otros:nv('pr-desp_otros'),
-    otros_costos:costos,items_extra:presProds.map(pr=>({...pr,tipo:'producto'})).concat([{tipo:'resumen',items:presCalc.resumen,alis_iva:presCalc.alisIva}],fichasGuardar()),ddp_total:nv('pr-ddp_total'),
+    otros_costos:costos,items_extra:presProds.map(pr=>({...pr,tipo:'producto'})).concat([{tipo:'resumen',items:presCalc.resumen,alis_iva:presCalc.alisIva}],fichasGuardar(),v('pr-proveedor').trim()?[{tipo:'meta',proveedor:v('pr-proveedor').trim()}]:[]),ddp_total:nv('pr-ddp_total'),
     total_usd:nv('pr-total_usd'),costo_final:nv('pr-costo_final'),
     es_importador:v('pr-tipo_cli')!=='no_importador',
     destino:v('pr-destino')||'comercializable',
@@ -2958,6 +2958,7 @@ td.r.rec{color:#C62828}
 .fic-t b{font-size:9.5pt;text-transform:uppercase}
 .fic-t span{font-size:8pt;color:rgba(255,255,255,.75);flex:1}
 .fic-t a{font-size:8pt;color:#6CCBE0;text-decoration:none;font-weight:700;white-space:nowrap}
+.fic-t em{font-style:normal;font-size:8pt;color:rgba(255,255,255,.85);white-space:nowrap}
 .fic-imgs{display:grid;gap:0;border-bottom:1px solid var(--line)}
 .fic-imgs.n1{grid-template-columns:1fr}.fic-imgs.n2{grid-template-columns:1fr 1fr}.fic-imgs.n3{grid-template-columns:repeat(3,1fr)}.fic-imgs.n4{grid-template-columns:repeat(4,1fr)}
 .fic-imgs div{height:52mm;display:flex;align-items:center;justify-content:center;padding:6px;border-right:1px solid var(--line);background:#fff}
@@ -2970,6 +2971,8 @@ td.r.rec{color:#C62828}
 .fic-c td.full{font-weight:500}
 .fic-src{font-size:7pt;color:var(--text3);margin-top:6px}
 `;
+// Nombre del proveedor a partir del link (ej. https://www.alibaba.com/... → Alibaba.com)
+function fichaProveedor(url){try{const h=new URL(url).hostname.replace(/^(www|m|es|articulo|listado)\./,'');return h.charAt(0).toUpperCase()+h.slice(1);}catch{return '';}}
 function ecxFacturaHtml(d){
   const E=ecxE,U=ecxUsd,V=ecxVal;
   const conceptos=(d.conceptos||[]).filter(c=>c.importe!=null);
@@ -3048,10 +3051,10 @@ function ecxFacturaHtml(d){
   const fichasHtml=fichas.length?`<div class="fpg">
     <div class="fhdr"><div class="lg"><img src="${ECX_LOGO_WHITE}" alt="E-COMEX"></div><div class="tt">Ficha${fichas.length>1?'s':''} del producto</div><div class="nn">Análisis N° ${E(d.numero||'—')}</div></div>
     ${fichas.map(f=>{const im=(f.imagenes||[]).slice(0,4);const cs=f.caracteristicas||[];
-      return `<div class="fic"><div class="fic-t"><b>${E(f.producto)}</b><span>${f.titulo&&f.titulo.toLowerCase()!==String(f.producto).toLowerCase()?E(f.titulo):''}</span>${f.url?`<a href="${E(f.url)}">Ver producto ↗</a>`:''}</div>
+      return `<div class="fic"><div class="fic-t"><b>${E(f.producto)}</b><span>${f.titulo&&f.titulo.toLowerCase()!==String(f.producto).toLowerCase()?E(f.titulo):''}</span>${f.url&&d.mostrar_proveedor?`<em>Proveedor: ${E(fichaProveedor(f.url))}</em><a href="${E(f.url)}">Ver producto ↗</a>`:''}</div>
       ${im.length?`<div class="fic-imgs n${im.length}">${im.map(u=>`<div><img src="${E(u)}" alt=""></div>`).join('')}</div>`:''}
       ${cs.length?`<table class="fic-c"><tbody>${cs.map(c=>c.k?`<tr><td class="k">${E(c.k)}</td><td>${E(c.v)}</td></tr>`:`<tr><td class="full" colspan="2">• ${E(c.v)}</td></tr>`).join('')}</tbody></table>`:''}</div>`;}).join('')}
-    <div class="fic-src">Imágenes y características tomadas del sitio del producto, a modo ilustrativo.</div>
+    <div class="fic-src">Imágenes y características ${d.mostrar_proveedor?'tomadas del sitio del proveedor':'de referencia'}, a modo ilustrativo.</div>
   </div>`:'';
   return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>${E(d.archivo||('E-COMEX · Análisis de importación '+(d.numero||'')))}</title>
 <style>${ECX_FONTS_CSS}
@@ -3367,10 +3370,14 @@ function _doPPT(i,modo){
       conceptos:ecxConceptos, total_erogacion:+(p.total_usd||0).toFixed(2),
       deduccion:{concepto:esImp?'(−) Tributos recuperables':('(−) IVA recuperable'+(alis.length>1?'':' ('+fAli(alis[0])+'%)')),importe:-recupTot},
       costo_final:+(p.costo_final||0).toFixed(2), items:ecxItems, unidad_items:'unidades', unidad_singular:'unidad',
-      observaciones:lines, archivo:fname.replace(/\.pptx$/i,''),
+      observaciones:lines,
+      // Nombre del PDF: "E-COMEX - <Proveedor>" (si no hay proveedor, el nombre de siempre)
+      archivo:(()=>{const pv=(((p.items_extra||[]).find(x=>x.tipo==='meta')||{}).proveedor||'').replace(/[\\/:*?"<>|]+/g,' ').replace(/\s+/g,' ').trim();return pv?'E-COMEX - '+pv:fname.replace(/\.pptx$/i,'');})(),
       fichas:(p.items_extra||[]).filter(x=>x.tipo==='ficha'&&((x.imagenes||[]).length||(x.caracteristicas||[]).length))
         .sort((a,b)=>a.idx-b.idx).map(x=>({producto:(prods[x.idx]||{}).nombre||x.titulo||'Producto',titulo:x.titulo||'',url:x.url||'',imagenes:(x.imagenes||[]).slice(0,4),caracteristicas:x.caracteristicas||[]}))
     };
+    // Si hay fichas con link, preguntar si se muestran el proveedor y el link
+    if((d.fichas||[]).some(f=>f.url))d.mostrar_proveedor=confirm('¿Querés mostrar en el PDF el proveedor y el link de cada producto (arriba a la derecha de la ficha)?\n\nAceptar = mostrar · Cancelar = ocultar');
     // Formato del PDF: 'factura' (A4 vertical) · 'deck' (6 slides oscuras) · 'a4' (A4 compacto) · 'a4sec' (A4 por secciones)
     const r=ECX_FORMATO==='factura'?{html:ecxFacturaHtml(d),warns:[]}
       :ECX_FORMATO==='a4'?{html:ecxDocHtml(d,'compacto'),warns:[]}
@@ -4067,6 +4074,7 @@ function clearPdf(){
     <!-- PRODUCTO -->
     <div class="fg" style="margin-top:10px">
       <div class="fgrp"><label class="flbl">Rubro</label><input class="fc" id="pr-rubro" placeholder="Industrial / Automotriz..."></div>
+      <div class="fgrp"><label class="flbl">Proveedor (da nombre al PDF: "E-COMEX - Proveedor")</label><input class="fc" id="pr-proveedor" placeholder="Nombre del proveedor"></div>
     </div>
 
     <!-- PRECIO -->
