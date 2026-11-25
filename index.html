@@ -1866,7 +1866,7 @@ function presProdSet(i,k,val){const pr=presProds[i];if(!pr)return;
   calcPres();}
 // ── Ficha del producto (link → imágenes y características para el PDF) ──
 // Usa la Edge Function "extraer-producto" de Supabase. presFichas[k]: k=0 producto 1, k=i+1 producto adicional i.
-const FICHA_FN='https://qmbokvjtomrwezbklkay.supabase.co/functions/v1/extraer-producto';
+const FICHA_FN='https://qmbokvjtomrwezbklkay.supabase.co/functions/v1/dynamic-responder'; // función publicada en Supabase (código de extraer-producto)
 const FICHA_MAX_IMG=4;
 let presFichas=[];
 function fichaVacia(){return{url:'',titulo:'',imgs:[],sel:[],data:{},caracts:''};}
@@ -1893,8 +1893,14 @@ function renderFichas(){renderFicha(0);presProds.forEach((_,i)=>renderFicha(i+1)
 function fichaBorrar(k){if(!confirm('¿Quitar la ficha de este producto?'))return;presFichas[k]=fichaVacia();renderFicha(k);}
 async function fichaLlamar(body){
   const {data:{session}}=await sb.auth.getSession();
-  const r=await fetch(FICHA_FN,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(session?.access_token||'')},body:JSON.stringify(body)});
-  if(r.status===404)throw new Error('La función "extraer-producto" todavía no está publicada en Supabase.');
+  let r;
+  for(let intento=0;intento<2;intento++){
+    try{r=await fetch(FICHA_FN,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(session?.access_token||'')},body:JSON.stringify(body)});break;}
+    catch(e){if(intento===1)throw new Error('No hubo respuesta de la función "dynamic-responder" (Failed to fetch). Revisá en Supabase → Edge Functions que tenga el código nuevo y mirá sus Logs: si dice "CPU time" o "Boot error", volvé a publicarla con el código nuevo.');
+      await new Promise(res=>setTimeout(res,1200));}
+  }
+  if(r.status===401)throw new Error('Supabase rechazó el pedido (401): cerrá sesión y volvé a entrar.');
+  if(r.status===404)throw new Error('La función "dynamic-responder" no está publicada en Supabase.');
   if(!r.ok)throw new Error('Error '+r.status+' al consultar la función.');
   return r.json();
 }
@@ -1915,7 +1921,7 @@ async function fichaExtraer(k){
     for(const u of f.imgs.slice(0,2))await fichaCargarImg(k,u,true); // preselecciona las 2 primeras
     renderFicha(k);
     toast(`Ficha cargada: ${f.imgs.length} imagen(es), ${(d.caracteristicas||[]).length} característica(s)`);
-  }catch(e){setT('prf-st-'+k,'');toast(e.message+' Si el sitio no deja leerlo, probá con otro link del mismo producto.','er');}
+  }catch(e){setT('prf-st-'+k,'');const m=e.message||String(e);toast(/función|Supabase|sesión/.test(m)?m:m+' Si el sitio no deja leerlo, probá con otro link del mismo producto.','er');console.error('Ficha del producto:',e);}
   finally{const b=$('prf-btn-'+k);if(b){b.disabled=false;b.textContent='🔍 Extraer';}}
 }
 // Achica la foto (máx. 900 px, JPEG) para que el presupuesto no pese de más
@@ -2929,7 +2935,7 @@ tr.sub td.r{border-top:1px solid var(--hair);color:var(--text)}
 .bottom{display:flex;margin-top:6px;border:1px solid var(--line);break-inside:avoid}
 .pay{flex:1;border-right:1px solid var(--line);display:flex;flex-direction:column}
 .pay table td{border-bottom:1px solid var(--line);background:var(--shade)}
-.pay .hint{flex:1;background:repeating-linear-gradient(0deg,var(--shade) 0 15px,#fff 15px 16px);padding:6px 8px;font-size:7.5pt;color:var(--text2);line-height:1.5}
+.pay .hint{flex:1;background:#fff;padding:6px 8px;font-size:7.5pt;color:var(--text2);line-height:1.5}
 .tots{width:72mm;display:flex;flex-direction:column}
 .tots .rw{display:flex;justify-content:space-between;padding:3.5px 8px;font-weight:700;font-size:8.3pt}
 .tots .rw span:last-child{font-variant-numeric:tabular-nums}
